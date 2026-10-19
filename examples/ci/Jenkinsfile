@@ -1,0 +1,63 @@
+// Jenkinsfile: DocOps in a declarative multibranch pipeline.
+// Requires: Docker Pipeline, Warnings Next Generation (SARIF parser), JUnit.
+pipeline {
+  agent { docker { image 'node:24' } }
+
+  options {
+    timeout(time: 15, unit: 'MINUTES')
+    disableConcurrentBuilds(abortPrevious: true)
+  }
+
+  environment {
+    DOCOPS_API_URL = 'https://api.docops.example'
+    // Jenkins has no built-in workload identity: use a short-lived token from Vault,
+    // or a service-account token scoped to checks:write and builds:write.
+    DOCOPS_TOKEN = credentials('docops-ci-token')
+  }
+
+  stages {
+    stage('Install DocOps CLI') {
+      steps { sh 'npm install --global @docops/cli@1' }
+    }
+
+    stage('Docs gates') {
+      when { changeRequest() }
+      steps {
+        sh 'git fetch --no-tags origin "+refs/heads/${CHANGE_TARGET}:refs/remotes/origin/${CHANGE_TARGET}"'
+        sh '''
+          docops check \
+            --base "origin/${CHANGE_TARGET}" \
+            --report sarif=docops.sarif \
+            --report junit=docops-junit.xml \
+            --upload
+        '''
+      }
+      post {
+        always {
+          recordIssues(tools: [sarif(pattern: 'docops.sarif', id: 'docops', name: 'DocOps')])
+          junit(allowEmptyResults: true, testResults: 'docops-junit.xml')
+        }
+      }
+    }
+
+    stage('Preview') {
+      when { changeRequest() }
+      steps {
+        sh 'docops build --preview --out site'
+        sh 'docops publish --dir site --kind preview'
+      }
+    }
+
+    stage('Publish') {
+      when { anyOf { branch 'main'; buildingTag() } }
+      steps {
+        script {
+          env.DOCOPS_ENV = env.TAG_NAME ? 'prod' : 'dev'
+          env.DOCOPS_VERSION = env.TAG_NAME ?: 'latest'
+        }
+        sh 'docops build --out site --version-name "$DOCOPS_VERSION"'
+        sh 'docops publish --dir site --env "$DOCOPS_ENV"'
+      }
+    }
+  }
+}

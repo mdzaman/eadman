@@ -1,0 +1,81 @@
+{{- /*
+Default-deny egress for every DocOps pod (the API and all worker groups). Allowed: DNS, the database,
+egress.allowedCidrs, and, only when egress.allowInternet is true, the public internet. A database
+without `to:` peers in values means "pods in this release's namespace". With objectStorage.type s3 and
+peers in objectStorage.s3.egress.to, a second policy lets the API pods (only them) reach the bucket's
+endpoint. Ingress is not restricted here: that depends on your ingress controller and mesh.
+*/ -}}
+{{- if .Values.networkPolicy.enabled }}
+{{- $sameNamespace := list (dict "podSelector" (dict)) }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "docops.fullname" . }}-egress
+  labels:
+    {{- include "docops.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "docops.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    # Cluster DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.dns.namespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.dns.podSelector | nindent 14 }}
+        {{- with .Values.networkPolicy.dns.extraPeers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # PostgreSQL
+    {{- include "docops.egressRule" (dict "to" (.Values.database.egress.to | default $sameNamespace) "ports" .Values.database.egress.ports) | nindent 4 }}
+    {{- with .Values.egress.allowedCidrs }}
+    # Extra destinations on any port
+    - to:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+    {{- end }}
+    {{- if .Values.egress.allowInternet }}
+    # The public internet (private ranges stay blocked)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            {{- with .Values.egress.internetExceptCidrs }}
+            except:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+    {{- end }}
+{{- /* An empty `to:` would allow every destination, so the rule exists only when peers are listed. */}}
+{{- if and (eq .Values.objectStorage.type "s3") .Values.objectStorage.s3.egress.to }}
+---
+# The S3-compatible endpoint, for the API pods only: the workers use no blob storage. Policies add up, so
+# the API pods also keep everything the policy above allows.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "docops.apiName" . }}-object-storage
+  labels:
+    {{- include "docops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "docops.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  policyTypes:
+    - Egress
+  egress:
+    {{- include "docops.egressRule" (dict "to" .Values.objectStorage.s3.egress.to "ports" .Values.objectStorage.s3.egress.ports) | nindent 4 }}
+{{- end }}
+{{- end }}

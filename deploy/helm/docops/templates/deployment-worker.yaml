@@ -1,0 +1,104 @@
+{{- if .Values.worker.enabled }}
+{{- range $group := .Values.worker.groups }}
+{{- /* Group settings fall back to the worker-level defaults. hasKey/get keep this safe under `helm lint --strict`. */}}
+{{- $concurrency := $.Values.worker.concurrency }}
+{{- if hasKey $group "concurrency" }}{{ $concurrency = $group.concurrency }}{{ end }}
+{{- $resources := $.Values.worker.resources }}
+{{- if hasKey $group "resources" }}{{ $resources = $group.resources }}{{ end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "docops.workerName" (dict "root" $ "group" $group) }}
+  labels:
+    {{- include "docops.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: worker
+    docops.io/worker-group: {{ $group.name | quote }}
+spec:
+  {{- if not $.Values.worker.autoscaling.enabled }}
+  replicas: {{ if hasKey $group "replicaCount" }}{{ $group.replicaCount }}{{ else }}{{ $.Values.worker.replicaCount }}{{ end }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "docops.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: worker
+      docops.io/worker-group: {{ $group.name | quote }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+        {{- with $.Values.worker.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "docops.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: worker
+        docops.io/worker-group: {{ $group.name | quote }}
+        {{- with $.Values.worker.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "docops.serviceAccountName" $ }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ $.Values.worker.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "docops.image" $ | quote }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          command: ["node", "apps/worker/src/main.ts"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "docops.fullname" $ }}
+          env:
+            {{- include "docops.databaseEnv" $ | nindent 12 }}
+            {{- with (get $group "queues") }}
+            - name: WORKER_QUEUES
+              value: {{ . | quote }}
+            {{- end }}
+            - name: WORKER_CONCURRENCY
+              value: {{ $concurrency | quote }}
+            - name: WORKER_POLL_MS
+              value: {{ $.Values.worker.pollMs | quote }}
+            {{- include "docops.secretEnv" (dict "secret" (include "docops.secretName" $) "keys" (list "JIRA_EMAIL" "JIRA_API_TOKEN")) | trim | nindent 12 }}
+            {{- with $.Values.worker.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml $resources | nindent 12 }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with $.Values.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.worker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.worker.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,19 @@
+{
+  "name": "@docops/renderer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@docops/core": "*",
+    "@docops/extractors": "*",
+    "@docops/markdown": "*",
+    "github-slugger": "^2.0.0",
+    "hast-util-sanitize": "^5.0.2",
+    "hast-util-to-html": "^9.0.5",
+    "mdast-util-to-hast": "^13.2.0",
+    "yaml": "^2.9.1"
+  }
+}

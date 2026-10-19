@@ -1,0 +1,262 @@
+openapi: 3.1.0
+info:
+  title: Acme Payments API
+  version: 2.4.0
+  description: Accept card and bank payments and issue refunds.
+servers:
+  - url: https://api.acme.example
+    description: Production
+  - url: https://sandbox.api.acme.example
+    description: Sandbox
+security:
+  - bearerAuth: []
+tags:
+  - name: Payments
+    description: Create, list and capture payments.
+  - name: Refunds
+    description: Refund captured payments in full or in part.
+paths:
+  /v1/payments:
+    post:
+      tags: [Payments]
+      operationId: createPayment
+      summary: Create a payment
+      description: Creates a payment. Set `capture` to false to authorize now and capture later.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentCreate"
+            example:
+              amount: 2000
+              currency: usd
+              customer_id: cus_123
+      responses:
+        "201":
+          description: Payment created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+    get:
+      tags: [Payments]
+      operationId: listPayments
+      summary: List payments
+      description: Returns payments, newest first.
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of payments to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: starting_after
+          in: query
+          description: Cursor for pagination (a payment id).
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Only return payments with this status.
+          schema:
+            $ref: "#/components/schemas/PaymentStatus"
+      responses:
+        "200":
+          description: A page of payments.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, has_more]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Payment"
+                  has_more:
+                    type: boolean
+  /v1/payments/{payment_id}:
+    parameters:
+      - name: payment_id
+        in: path
+        required: true
+        description: The payment identifier.
+        schema:
+          type: string
+    get:
+      tags: [Payments]
+      operationId: getPayment
+      summary: Retrieve a payment
+      responses:
+        "200":
+          description: The payment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "404":
+          $ref: "#/components/responses/Error"
+  /v1/payments/{payment_id}/capture:
+    parameters:
+      - name: payment_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Payments]
+      operationId: capturePayment
+      summary: Capture an authorized payment
+      responses:
+        "200":
+          description: The captured payment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "409":
+          $ref: "#/components/responses/Error"
+  /v1/payments/{payment_id}/reconcile:
+    parameters:
+      - name: payment_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Payments]
+      operationId: reconcilePayment
+      summary: Reconcile a payment with the processor (internal)
+      x-internal: true
+      responses:
+        "202":
+          description: Reconciliation scheduled.
+  /v1/refunds:
+    post:
+      tags: [Refunds]
+      operationId: createRefund
+      summary: Refund a payment
+      description: Refunds a captured payment in full, or in part when `amount` is set.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefundCreate"
+      responses:
+        "201":
+          description: Refund created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Refund"
+        "400":
+          $ref: "#/components/responses/Error"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Secret API key, sent as a bearer token.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Unique key that makes retries safe. Reusing a key returns the original response.
+      schema:
+        type: string
+  responses:
+    Error:
+      description: Error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    PaymentStatus:
+      type: string
+      enum: [pending, succeeded, failed, refunded]
+    PaymentCreate:
+      type: object
+      required: [amount, currency, customer_id]
+      properties:
+        amount:
+          type: integer
+          minimum: 50
+          description: Amount in minor currency units (for example cents).
+        currency:
+          type: string
+          enum: [usd, eur, gbp]
+        customer_id:
+          type: string
+        description:
+          type: string
+        capture:
+          type: boolean
+          default: true
+          description: Capture immediately. Set to false to authorize only.
+    Payment:
+      type: object
+      required: [id, amount, currency, status, created_at]
+      properties:
+        id:
+          type: string
+        amount:
+          type: integer
+        currency:
+          type: string
+        status:
+          $ref: "#/components/schemas/PaymentStatus"
+        customer_id:
+          type: string
+        captured:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+    RefundCreate:
+      type: object
+      required: [payment_id]
+      properties:
+        payment_id:
+          type: string
+        amount:
+          type: integer
+          description: Amount to refund in minor units. Defaults to the full captured amount.
+        reason:
+          type: string
+          enum: [duplicate, fraudulent, requested_by_customer]
+    Refund:
+      type: object
+      required: [id, payment_id, amount, status, created_at]
+      properties:
+        id:
+          type: string
+        payment_id:
+          type: string
+        amount:
+          type: integer
+        status:
+          type: string
+          enum: [pending, succeeded, failed]
+        created_at:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Acme Payments service configuration",
+  "type": "object",
+  "required": ["PAYMENTS_WEBHOOK_SECRET"],
+  "properties": {
+    "PAYMENTS_TIMEOUT_MS": {
+      "type": "integer",
+      "default": 30000,
+      "minimum": 1000,
+      "description": "Timeout for calls to the card processor, in milliseconds."
+    },
+    "PAYMENTS_RETRY_LIMIT": {
+      "type": "integer",
+      "default": 3,
+      "description": "Retries for idempotent processor calls."
+    },
+    "PAYMENTS_WEBHOOK_SECRET": {
+      "type": "string",
+      "description": "Signing secret used to verify processor webhooks."
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{{- /*
+PodDisruptionBudgets keep node drains from taking every replica down at once. They are only created
+when there can be more than one replica: with a single replica "minAvailable: 1" would block drains.
+*/ -}}
+{{- if and .Values.api.podDisruptionBudget.enabled (or .Values.api.autoscaling.enabled (gt (int .Values.api.replicaCount) 1)) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "docops.apiName" . }}
+  labels:
+    {{- include "docops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  minAvailable: {{ .Values.api.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "docops.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+{{- end }}
+{{- if and .Values.worker.enabled .Values.worker.podDisruptionBudget.enabled }}
+{{- range $group := .Values.worker.groups }}
+{{- $replicas := $.Values.worker.replicaCount }}
+{{- if hasKey $group "replicaCount" }}{{ $replicas = $group.replicaCount }}{{ end }}
+{{- if or $.Values.worker.autoscaling.enabled (gt (int $replicas) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "docops.workerName" (dict "root" $ "group" $group) }}
+  labels:
+    {{- include "docops.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: worker
+    docops.io/worker-group: {{ $group.name | quote }}
+spec:
+  minAvailable: {{ $.Values.worker.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "docops.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: worker
+      docops.io/worker-group: {{ $group.name | quote }}
+{{- end }}
+{{- end }}
+{{- end }}

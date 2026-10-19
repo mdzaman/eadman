@@ -1,0 +1,60 @@
+# .github/workflows/docs.yml: DocOps on GitHub Actions.
+# PRs: quality gates, a sticky PR comment, inline annotations and a preview.
+# main: publish to dev. Release tags: promote the same build to prod (environment-protected).
+name: docs
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  pull-requests: write   # sticky comment and suggestion comments
+  checks: write          # check run with annotations
+  id-token: write        # OIDC token exchange: no DocOps secret stored in GitHub
+
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      # Pin third-party actions to a full commit SHA in production workflows.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0            # base ref needed for schema-change and drift detection
+      - id: docops
+        uses: docops/action@v1
+        with:
+          command: check
+          base: origin/${{ github.base_ref }}
+          comment: true             # sticky summary comment and ```suggestion blocks
+          annotations: true         # inline annotations on changed lines
+          preview: true             # build and upload a preview; URL in the comment
+          sarif: docops.sarif       # optional: also feed GitHub code scanning
+      - if: always() && steps.docops.outputs.sarif-file != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.docops.outputs.sarif-file }}
+          category: docops
+
+  publish:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: ${{ startsWith(github.ref, 'refs/tags/') && 'production' || 'development' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: docops/action@v1
+        with:
+          command: publish
+          # Tags promote to prod (environment protection rules require an approver);
+          # main promotes to dev.
+          environment: ${{ startsWith(github.ref, 'refs/tags/') && 'prod' || 'dev' }}
+          version: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}

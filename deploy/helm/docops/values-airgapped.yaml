@@ -1,0 +1,76 @@
+# A minimal values file for an air-gapped cluster: nothing is pulled from, or sent to, the internet.
+# Replace every *.internal.example name and every CIDR with your own.
+#
+# Before installing
+#   1. Mirror the image into your registry (see deploy/README.md) and keep global.imageRegistry in sync.
+#   2. Create the PersistentVolumeClaim and the Secrets named below in the target namespace:
+#        docops-blobs      a PersistentVolumeClaim for uploaded builds (ReadWriteOnce is fine for one replica)
+#        docops-database   key DATABASE_URL
+#        docops-secrets    keys DOCOPS_TOKEN_SIGNING_SECRET, DOCOPS_PREVIEW_SECRET and DOCOPS_SIGNING_KEY_PEM (shared by every API replica;
+#                          create the key with: openssl genpkey -algorithm ed25519);
+#                          optionally JIRA_EMAIL, JIRA_API_TOKEN, GITHUB_WEBHOOK_SECRET, JIRA_WEBHOOK_SECRET
+#        internal-registry a docker-registry Secret, if your mirror needs credentials
+#
+#   helm install docops deploy/helm/docops -f deploy/helm/docops/values-airgapped.yaml
+#
+# AI (a local OpenAI-compatible model server and an embeddings server) is planned but not configurable
+# yet: see "Planned" in deploy/README.md.
+
+global:
+  imageRegistry: registry.internal.example/mirror
+  imagePullSecrets:
+    - name: internal-registry
+
+image:
+  # Prefer an immutable reference: set image.digest to the digest of the mirrored image instead of the tag.
+  tag: "0.1.0"
+
+cell: onprem-1
+publicUrl: https://docops.internal.example
+
+database:
+  existingSecret: docops-database
+  egress:
+    to:
+      - ipBlock:
+          cidr: 10.20.0.0/24
+    ports: [5432]
+
+# Blobs live on this claim. With a ReadWriteOnce claim and one API replica, replace the pod instead
+# of surging a second one, because the claim cannot be attached to two pods at once.
+# For several API replicas, use an S3-compatible service inside the network instead (MinIO, Ceph RGW,
+# ...) and drop the claim and the Recreate strategy:
+#   objectStorage:
+#     type: s3
+#     s3:
+#       bucket: docops-blobs
+#       endpoint: https://s3.internal.example
+#       forcePathStyle: true
+#       credentials: { existingSecret: docops-s3 }     # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+#       egress: { to: [{ ipBlock: { cidr: 10.40.0.0/24 } }], ports: [443] }
+objectStorage:
+  filesystem:
+    existingClaim: docops-blobs
+api:
+  strategy:
+    type: Recreate
+    rollingUpdate: null
+
+secrets:
+  existingSecret: docops-secrets
+
+# Jira Data Center and GitHub Enterprise Server inside the network (see egress.allowedCidrs below).
+jira:
+  baseUrl: https://jira.internal.example
+
+# Default-deny egress stays on, and the public internet stays closed.
+networkPolicy:
+  enabled: true
+egress:
+  allowInternet: false
+  allowedCidrs:
+    - 10.30.0.0/24
+
+# Offline licensing and local LLM packs for air-gapped installs are V2 roadmap items (docs/09 section 4).
+# The current build reads neither, so there is nothing to configure for them here yet: see "Planned"
+# in deploy/README.md.

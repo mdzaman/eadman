@@ -1,0 +1,10 @@
+{
+  "name": "@docops/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": { "@docops/core": "*", "ajv": "^8.20.0", "yaml": "^2.9.1" }
+}

@@ -1,0 +1,2806 @@
+openapi: 3.1.0
+info:
+  title: DocOps API
+  version: 1.0.0
+  summary: Content graph, quality gates, builds, Jira readiness and governed AI for docs-as-code.
+  description: |
+    The DocOps REST API. Design rules (see docs/04-api-design.md):
+
+    * Resource-oriented URLs under `/v1`; additive changes only within a major version.
+    * Tenant is derived from the credential; it never appears in the URL.
+    * Cursor pagination (`cursor`, `limit`), `Idempotency-Key` on every POST that creates state.
+    * Errors are RFC 9457 `application/problem+json`.
+    * `x-docops-phase` marks the roadmap phase (mvp, v1, v2) of each operation.
+  contact:
+    name: DocOps API team
+    url: https://docs.docops.example/api
+servers:
+  - url: https://api.docops.example
+    description: US cell (SaaS)
+  - url: https://api.eu.docops.example
+    description: EU cell (SaaS)
+  - url: http://localhost:8787
+    description: Local development (apps/api)
+security:
+  - bearerToken: []
+tags:
+  - name: Operations
+    description: Health and readiness probes.
+  - name: Identity
+    description: Current principal, tokens, CI OIDC token exchange and role bindings.
+  - name: Repositories
+    description: Connected repositories and CLI snapshot ingestion.
+  - name: Content
+    description: Spaces, versions, pages and the content graph.
+  - name: Entities
+    description: Entities extracted from API specs, code and infrastructure.
+  - name: Checks
+    description: Quality-gate runs and findings.
+  - name: Builds
+    description: Content-addressed builds, blobs and deployments.
+  - name: Tracker
+    description: Ticket links, docs status, release readiness and traceability.
+  - name: AI
+    description: Search, Ask-the-docs and AI suggestions (always human-approved).
+  - name: Governance
+    description: Audit log, exports and outbound webhook subscriptions.
+  - name: Inbound webhooks
+    description: Receivers for Git provider and issue-tracker webhooks.
+  - name: Serving
+    description: Static site serving (CDN in production; the API in local mode).
+
+paths:
+  /healthz:
+    get:
+      tags: [Operations]
+      operationId: getHealth
+      summary: Liveness and readiness
+      security: []
+      x-docops-phase: mvp
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version]
+                properties:
+                  status: { type: string, enum: [ok, degraded] }
+                  version: { type: string }
+                  checks:
+                    type: object
+                    additionalProperties: { type: string, enum: [ok, failing] }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /v1/me:
+    get:
+      tags: [Identity]
+      operationId: getMe
+      summary: Current principal, tenant and effective scopes
+      x-docops-phase: mvp
+      responses:
+        "200":
+          description: The authenticated principal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/auth/oidc-exchange:
+    post:
+      tags: [Identity]
+      operationId: exchangeOidcToken
+      summary: Exchange a CI OIDC token for a short-lived DocOps token (RFC 8693)
+      description: |
+        Workload identity federation for CI. A GitHub Actions / GitLab / Azure Pipelines OIDC
+        token is validated against the issuer's JWKS and the tenant's trust policy
+        (repository, ref, environment). The issued token is scoped to that repository and
+        expires in 15 minutes. No long-lived secrets in CI.
+      security: []
+      x-docops-phase: mvp
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema: { $ref: "#/components/schemas/TokenExchangeRequest" }
+      responses:
+        "200":
+          description: Issued token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/api-tokens:
+    get:
+      tags: [Identity]
+      operationId: listApiTokens
+      summary: List API tokens (metadata only)
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Tokens.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/ApiToken" } }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Identity]
+      operationId: createApiToken
+      summary: Create an API token (secret returned once)
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApiTokenCreate" }
+      responses:
+        "201":
+          description: Token created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiTokenCreated" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/api-tokens/{tokenId}:
+    delete:
+      tags: [Identity]
+      operationId: revokeApiToken
+      summary: Revoke an API token
+      x-docops-phase: mvp
+      parameters:
+        - name: tokenId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Revoked. }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/role-bindings:
+    get:
+      tags: [Identity]
+      operationId: listRoleBindings
+      summary: List role bindings
+      x-docops-phase: mvp
+      parameters:
+        - name: scopeType
+          in: query
+          schema: { type: string, enum: [org, space, page] }
+        - name: scopeId
+          in: query
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Role bindings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/RoleBinding" } }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Identity]
+      operationId: createRoleBinding
+      summary: Grant a role to a principal at a scope
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RoleBindingCreate" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RoleBinding" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/role-bindings/{bindingId}:
+    delete:
+      tags: [Identity]
+      operationId: deleteRoleBinding
+      summary: Remove a role binding
+      x-docops-phase: mvp
+      parameters:
+        - name: bindingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Removed. }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/repositories:
+    get:
+      tags: [Repositories]
+      operationId: listRepositories
+      summary: List connected repositories
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Repositories.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Repository" } }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Repositories]
+      operationId: connectRepository
+      summary: Connect a repository
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RepositoryConnect" }
+      responses:
+        "201":
+          description: Connected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Repository" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/repositories/{repositoryId}:
+    get:
+      tags: [Repositories]
+      operationId: getRepository
+      summary: Get a repository
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/RepositoryId"
+      responses:
+        "200":
+          description: Repository.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Repository" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/snapshots:
+    post:
+      tags: [Repositories]
+      operationId: uploadSnapshot
+      summary: Upload an extracted content snapshot for a commit (from `docops check`/`docops extract`)
+      description: |
+        Pages, entities and references extracted by the CLI in CI. The API upserts the content
+        graph for the space (derived data) and records entity history on the default branch.
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Snapshot" }
+      responses:
+        "202":
+          description: Accepted and applied.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SnapshotAccepted" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/repositories/{repositoryId}/snapshots/{commitSha}:
+    get:
+      tags: [Repositories]
+      operationId: getSnapshot
+      summary: Get the entity snapshot recorded for a commit (used as the PR base)
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/RepositoryId"
+        - name: commitSha
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[0-9a-f]{7,64}$" }
+      responses:
+        "200":
+          description: Snapshot.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Snapshot" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/spaces:
+    get:
+      tags: [Content]
+      operationId: listSpaces
+      summary: List documentation spaces
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Spaces.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Space" } }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/spaces/{spaceId}:
+    get:
+      tags: [Content]
+      operationId: getSpace
+      summary: Get a space
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/SpaceId"
+      responses:
+        "200":
+          description: Space.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Space" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/spaces/{spaceId}/versions:
+    get:
+      tags: [Content]
+      operationId: listVersions
+      summary: List versions of a space
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/SpaceId"
+      responses:
+        "200":
+          description: Versions, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Version" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/spaces/{spaceId}/pages:
+    get:
+      tags: [Content]
+      operationId: listPages
+      summary: List pages in a space
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/SpaceId"
+        - name: pageType
+          in: query
+          schema: { $ref: "#/components/schemas/PageType" }
+        - name: q
+          in: query
+          description: Case-insensitive match on title or path.
+          schema: { type: string, maxLength: 200 }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Pages.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/PageSummary" } }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/pages/{pageId}:
+    get:
+      tags: [Content]
+      operationId: getPage
+      summary: Get a page with its current revision metadata
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/PageId"
+      responses:
+        "200":
+          description: Page.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/pages/{pageId}/graph:
+    get:
+      tags: [Content]
+      operationId: getPageGraph
+      summary: Graph neighborhood of a page (entities, tickets, owners, staleness)
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/PageId"
+      responses:
+        "200":
+          description: Neighborhood.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PageGraph" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/spaces/{spaceId}/coverage:
+    get:
+      tags: [Content]
+      operationId: getCoverage
+      summary: Documentation coverage of public entities
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/SpaceId"
+        - name: kind
+          in: query
+          schema: { type: string, example: api.operation }
+      responses:
+        "200":
+          description: Coverage report.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Coverage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/spaces/{spaceId}/freshness:
+    get:
+      tags: [Content]
+      operationId: getFreshness
+      summary: Pages overdue for review or stale against changed entities
+      x-docops-phase: v1
+      parameters:
+        - $ref: "#/components/parameters/SpaceId"
+      responses:
+        "200":
+          description: Freshness report.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Freshness" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/entities:
+    get:
+      tags: [Entities]
+      operationId: listEntities
+      summary: List or search entities
+      x-docops-phase: mvp
+      parameters:
+        - name: spaceId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: kind
+          in: query
+          schema: { type: string, example: api.operation }
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 200 }
+        - name: documented
+          in: query
+          description: Filter to documented (true) or undocumented (false) entities.
+          schema: { type: boolean }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Entities.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Entity" } }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/entities/{entityId}:
+    get:
+      tags: [Entities]
+      operationId: getEntity
+      summary: Get an entity with the pages that reference it
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/EntityId"
+      responses:
+        "200":
+          description: Entity.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Entity"
+                  - type: object
+                    properties:
+                      referencedBy:
+                        type: array
+                        items: { $ref: "#/components/schemas/EntityReference" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/entities/{entityId}/history:
+    get:
+      tags: [Entities]
+      operationId: getEntityHistory
+      summary: Definition history (one entry per fingerprint change)
+      x-docops-phase: v1
+      parameters:
+        - $ref: "#/components/parameters/EntityId"
+      responses:
+        "200":
+          description: History, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/EntitySnapshot" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/check-runs:
+    post:
+      tags: [Checks]
+      operationId: createCheckRun
+      summary: Record a quality-gate run (uploaded by the CLI)
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CheckRunCreate" }
+      responses:
+        "201":
+          description: Recorded. Dismissed fingerprints are returned so the CLI can suppress them.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckRun" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/check-runs/{checkRunId}:
+    get:
+      tags: [Checks]
+      operationId: getCheckRun
+      summary: Get a check run with its findings
+      x-docops-phase: mvp
+      parameters:
+        - name: checkRunId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Check run.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/CheckRun"
+                  - type: object
+                    required: [findings]
+                    properties:
+                      findings: { type: array, items: { $ref: "#/components/schemas/Finding" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/findings:
+    get:
+      tags: [Checks]
+      operationId: listFindings
+      summary: List findings across check runs
+      x-docops-phase: mvp
+      parameters:
+        - name: repositoryId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, fixed, dismissed, accepted_risk] }
+        - name: category
+          in: query
+          schema: { type: string, example: drift }
+        - name: severity
+          in: query
+          schema: { $ref: "#/components/schemas/Severity" }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Findings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Finding" } }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/findings/{findingId}/dismiss:
+    post:
+      tags: [Checks]
+      operationId: dismissFinding
+      summary: Dismiss a finding (persists across runs by fingerprint; audited)
+      x-docops-phase: mvp
+      parameters:
+        - name: findingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DismissFindingRequest" }
+      responses:
+        "200":
+          description: Dismissed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FindingState" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/builds:
+    post:
+      tags: [Builds]
+      operationId: createBuild
+      summary: Start a build upload; returns the digests the server does not have yet
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BuildCreate" }
+      responses:
+        "201":
+          description: Build created in `uploading` state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BuildCreated" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/blobs/{digest}:
+    put:
+      tags: [Builds]
+      operationId: uploadBlob
+      summary: Upload a content-addressed blob (sha256 verified server-side)
+      x-docops-phase: mvp
+      parameters:
+        - name: digest
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[a-f0-9]{64}$" }
+        - name: Content-Type
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, contentMediaType: application/octet-stream }
+      responses:
+        "201": { description: Stored. }
+        "200": { description: Already present (idempotent). }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { description: Blob exceeds the size limit (25 MiB). }
+
+  /v1/builds/{buildId}:
+    get:
+      tags: [Builds]
+      operationId: getBuild
+      summary: Get a build
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/BuildId"
+      responses:
+        "200":
+          description: Build.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Build" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/builds/{buildId}/finalize:
+    post:
+      tags: [Builds]
+      operationId: finalizeBuild
+      summary: Verify all blobs are present, sign the manifest and mark the build ready
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/BuildId"
+      responses:
+        "200":
+          description: Build is ready (preview builds get a preview URL).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Build" }
+        "409":
+          description: Blobs still missing.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /v1/deployments:
+    get:
+      tags: [Builds]
+      operationId: listDeployments
+      summary: List deployments
+      x-docops-phase: mvp
+      parameters:
+        - name: spaceId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: environment
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string, enum: [active, superseded, rolled_back] }
+      responses:
+        "200":
+          description: Deployments, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Deployment" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Builds]
+      operationId: createDeployment
+      summary: Promote an immutable build to an environment (atomic alias switch)
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeploymentCreate" }
+      responses:
+        "201":
+          description: Promoted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Deployment" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/tickets/{ticketKey}/docs:
+    get:
+      tags: [Tracker]
+      operationId: getTicketDocs
+      summary: Docs status of a ticket (powers the Jira issue panel)
+      x-docops-phase: mvp
+      parameters:
+        - name: ticketKey
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Z][A-Z0-9_]+-[0-9]+$", example: PAY-123 }
+        - name: tracker
+          in: query
+          schema: { type: string, enum: [jira, jira_dc, linear, azure_boards, github], default: jira }
+      responses:
+        "200":
+          description: Docs status and linked content.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketDocs" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/links:
+    get:
+      tags: [Tracker]
+      operationId: listLinks
+      summary: List ticket links
+      x-docops-phase: mvp
+      parameters:
+        - name: ticketKey
+          in: query
+          schema: { type: string }
+        - name: pageId
+          in: query
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Links.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Link" } }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Tracker]
+      operationId: createLink
+      summary: Link a ticket to a page, PR, release or entity
+      description: |
+        Links created here (for example from the Jira panel) are also written back to the
+        tracker as an issue property and a remote link, so the tracker remains a system of record.
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LinkCreate" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Link" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/links/{linkId}:
+    delete:
+      tags: [Tracker]
+      operationId: deleteLink
+      summary: Remove a manual link (derived links are removed by changing the source)
+      x-docops-phase: mvp
+      parameters:
+        - name: linkId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Removed. }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Link is derived from Git (frontmatter, PR, commit) and cannot be deleted here.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /v1/readiness:
+    get:
+      tags: [Tracker]
+      operationId: getReadiness
+      summary: Release readiness for a tracker fix version
+      x-docops-phase: mvp
+      parameters:
+        - name: tracker
+          in: query
+          schema: { type: string, enum: [jira, jira_dc], default: jira }
+        - name: project
+          in: query
+          required: true
+          schema: { type: string, example: PAY }
+        - name: fixVersion
+          in: query
+          required: true
+          schema: { type: string, example: 2.4.0 }
+      responses:
+        "200":
+          description: Readiness summary and per-ticket status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Readiness" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/readiness/doc-tasks:
+    post:
+      tags: [Tracker]
+      operationId: createDocTasks
+      summary: Create doc sub-tasks for tickets whose docs are missing
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DocTasksRequest" }
+      responses:
+        "200":
+          description: Result per ticket.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocTasksResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/traceability:
+    get:
+      tags: [Tracker]
+      operationId: getTraceability
+      summary: Requirement → ticket → commit → PR → page → release chain
+      x-docops-phase: v1
+      parameters:
+        - name: project
+          in: query
+          required: true
+          schema: { type: string }
+        - name: fixVersion
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Traceability rows.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Traceability" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/traceability/exports:
+    post:
+      tags: [Tracker]
+      operationId: createTraceabilityExport
+      summary: Export a signed traceability evidence bundle (in-toto attestation)
+      x-docops-phase: v2
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project, fixVersion, format]
+              properties:
+                project: { type: string }
+                fixVersion: { type: string }
+                format: { type: string, enum: [json, csv, pdf, intoto] }
+      responses:
+        "202":
+          description: Export job accepted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Export" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/releases:
+    get:
+      tags: [Tracker]
+      operationId: listReleases
+      summary: List releases (Git tags and tracker versions)
+      x-docops-phase: v1
+      parameters:
+        - name: spaceId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Releases.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Release" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/releases/{releaseId}/notes:
+    post:
+      tags: [Tracker]
+      operationId: generateReleaseNotes
+      summary: Generate release notes as a pull request (AI polish optional, never auto-merged)
+      x-docops-phase: v1
+      parameters:
+        - name: releaseId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ai: { type: boolean, default: false }
+                audience: { type: string, default: public }
+      responses:
+        "202":
+          description: Suggestion created; a PR will be opened.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Suggestion" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/search:
+    get:
+      tags: [AI]
+      operationId: search
+      summary: Hybrid search (permission-filtered)
+      x-docops-phase: v1
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 500 }
+        - name: spaceId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: version
+          in: query
+          schema: { type: string }
+        - name: audience
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Results the caller is allowed to read.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResults" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/ask:
+    post:
+      tags: [AI]
+      operationId: ask
+      summary: Ask-the-docs (grounded, cited, permission-filtered)
+      description: |
+        Returns `not_documented` rather than guessing. Every citation's quote is verified
+        verbatim against the cited chunk, and cited pages are re-authorized before returning.
+        `Accept: text/event-stream` streams tokens and then a final `answer` event.
+      x-docops-phase: v1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AskRequest" }
+      responses:
+        "200":
+          description: Answer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AskResponse" }
+            text/event-stream:
+              schema: { type: string }
+        "403":
+          description: AI is not enabled for this tenant or space.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /v1/suggestions:
+    get:
+      tags: [AI]
+      operationId: listSuggestions
+      summary: List AI suggestions awaiting or past human decision
+      x-docops-phase: mvp
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [proposed, accepted, edited, rejected, expired, failed_validation] }
+        - name: kind
+          in: query
+          schema: { type: string, enum: [drift_patch, semantic_drift, draft, release_notes, gap_cluster] }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Suggestions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Suggestion" } }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/suggestions/{suggestionId}:
+    get:
+      tags: [AI]
+      operationId: getSuggestion
+      summary: Get an AI suggestion with full provenance
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/SuggestionId"
+      responses:
+        "200":
+          description: Suggestion.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Suggestion" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/suggestions/{suggestionId}/accept:
+    post:
+      tags: [AI]
+      operationId: acceptSuggestion
+      summary: Accept (optionally edited); commits to the PR branch as the accepting human
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/SuggestionId"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SuggestionDecision" }
+      responses:
+        "200":
+          description: Accepted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Suggestion" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/suggestions/{suggestionId}/reject:
+    post:
+      tags: [AI]
+      operationId: rejectSuggestion
+      summary: Reject a suggestion (feeds precision metrics)
+      x-docops-phase: mvp
+      parameters:
+        - $ref: "#/components/parameters/SuggestionId"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SuggestionDecision" }
+      responses:
+        "200":
+          description: Rejected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Suggestion" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/feedback:
+    post:
+      tags: [AI]
+      operationId: submitFeedback
+      summary: Reader feedback on a page or an answer
+      x-docops-phase: v1
+      security:
+        - bearerToken: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Feedback" }
+      responses:
+        "202": { description: Recorded. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/audit-events:
+    get:
+      tags: [Governance]
+      operationId: listAuditEvents
+      summary: Query the hash-chained audit log (auditor role)
+      x-docops-phase: mvp
+      parameters:
+        - name: action
+          in: query
+          schema: { type: string, example: page.published }
+        - name: actorId
+          in: query
+          schema: { type: string }
+        - name: resourceType
+          in: query
+          schema: { type: string }
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+        - name: until
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Audit events in sequence order, with chain verification status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor, chain]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AuditEvent" } }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+                  chain:
+                    type: object
+                    required: [verified]
+                    properties:
+                      verified: { type: boolean }
+                      firstBrokenSeq: { type: [integer, "null"] }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/exports:
+    post:
+      tags: [Governance]
+      operationId: createExport
+      summary: Full tenant metadata export (JSONL with schemas); content is already in Git
+      x-docops-phase: v1
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                include:
+                  type: array
+                  items: { type: string, enum: [graph, findings, builds, deployments, ai, audit, analytics] }
+      responses:
+        "202":
+          description: Export job accepted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Export" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/exports/{exportId}:
+    get:
+      tags: [Governance]
+      operationId: getExport
+      summary: Export status and download URL
+      x-docops-phase: v1
+      parameters:
+        - name: exportId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Export.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Export" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/webhook-subscriptions:
+    get:
+      tags: [Governance]
+      operationId: listWebhookSubscriptions
+      summary: List outbound webhook subscriptions
+      x-docops-phase: v1
+      responses:
+        "200":
+          description: Subscriptions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/WebhookSubscription" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Governance]
+      operationId: createWebhookSubscription
+      summary: Subscribe an HTTPS endpoint to events (signing secret returned once)
+      x-docops-phase: v1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WebhookSubscriptionCreate" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/WebhookSubscription"
+                  - type: object
+                    required: [secret]
+                    properties:
+                      secret: { type: string, description: "whsec_... (Standard Webhooks format), shown once" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/webhook-subscriptions/{subscriptionId}:
+    delete:
+      tags: [Governance]
+      operationId: deleteWebhookSubscription
+      summary: Delete a subscription
+      x-docops-phase: v1
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/webhook-subscriptions/{subscriptionId}/test:
+    post:
+      tags: [Governance]
+      operationId: testWebhookSubscription
+      summary: Send a signed `docops.ping` event
+      x-docops-phase: v1
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "202": { description: Test event queued. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /hooks/github:
+    post:
+      tags: [Inbound webhooks]
+      operationId: receiveGithubWebhook
+      summary: GitHub App webhook receiver
+      description: |
+        Verifies `X-Hub-Signature-256` (HMAC-SHA256 over the raw body, constant-time compare),
+        de-duplicates on `X-GitHub-Delivery`, maps the installation to a tenant and enqueues work.
+        Returns quickly; processing is asynchronous.
+      security:
+        - githubSignature: []
+      x-docops-phase: mvp
+      parameters:
+        - name: X-GitHub-Event
+          in: header
+          required: true
+          schema: { type: string, example: pull_request }
+        - name: X-GitHub-Delivery
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: GitHub webhook payload }
+      responses:
+        "202": { description: "Accepted (duplicates are also acknowledged with 202)." }
+        "401": { description: Signature invalid. }
+
+  /hooks/jira:
+    post:
+      tags: [Inbound webhooks]
+      operationId: receiveJiraWebhook
+      summary: Jira webhook receiver (Forge Remote events with FIT, or Data Center webhooks with HMAC)
+      security:
+        - forgeInvocationToken: []
+        - jiraSignature: []
+      x-docops-phase: mvp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Jira issue / version event payload }
+      responses:
+        "202": { description: Accepted. }
+        "401": { description: Authentication failed. }
+
+  /hooks/gitlab:
+    post:
+      tags: [Inbound webhooks]
+      operationId: receiveGitlabWebhook
+      summary: GitLab webhook receiver (`X-Gitlab-Token` / signing token)
+      security:
+        - gitlabToken: []
+      x-docops-phase: v1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "202": { description: Accepted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /sites/{tenant}/{space}/{environment}/{path}:
+    get:
+      tags: [Serving]
+      operationId: serveSite
+      summary: Serve a file from the active deployment (CDN in production)
+      security:
+        - bearerToken: []
+        - {}
+      x-docops-phase: mvp
+      parameters:
+        - name: tenant
+          in: path
+          required: true
+          schema: { type: string }
+        - name: space
+          in: path
+          required: true
+          schema: { type: string }
+        - name: environment
+          in: path
+          required: true
+          schema: { type: string }
+        - name: path
+          in: path
+          required: true
+          description: File path within the build (`index.html` when empty).
+          schema: { type: string }
+      responses:
+        "200":
+          description: File content (immutable caching for hashed assets).
+          content:
+            text/html:
+              schema: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+webhooks:
+  docops.page.published:
+    post:
+      summary: Pages became live in an environment
+      operationId: onPagePublished
+      parameters: &webhookHeaders
+        - name: webhook-id
+          in: header
+          required: true
+          schema: { type: string }
+        - name: webhook-timestamp
+          in: header
+          required: true
+          schema: { type: string, description: Unix seconds }
+        - name: webhook-signature
+          in: header
+          required: true
+          schema: { type: string, description: "v1,<base64 HMAC-SHA256 of id.timestamp.body>" }
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CloudEvent"
+                - type: object
+                  properties:
+                    data: { $ref: "#/components/schemas/PagePublishedData" }
+      responses: &webhookResponses
+        "2XX": { description: Acknowledged. Non-2xx responses are retried with exponential backoff for 24 hours. }
+  docops.build.succeeded:
+    post:
+      summary: A build finished and is ready to deploy
+      operationId: onBuildSucceeded
+      parameters: *webhookHeaders
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CloudEvent"
+                - type: object
+                  properties:
+                    data: { $ref: "#/components/schemas/Build" }
+      responses: *webhookResponses
+  docops.build.failed:
+    post:
+      summary: A build failed
+      operationId: onBuildFailed
+      parameters: *webhookHeaders
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CloudEvent"
+                - type: object
+                  properties:
+                    data: { $ref: "#/components/schemas/Build" }
+      responses: *webhookResponses
+  docops.preview.ready:
+    post:
+      summary: A pull-request preview is available
+      operationId: onPreviewReady
+      parameters: *webhookHeaders
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CloudEvent"
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      required: [buildId, repository, pullRequestNumber, url]
+                      properties:
+                        buildId: { type: string, format: uuid }
+                        repository: { type: string }
+                        pullRequestNumber: { type: integer }
+                        url: { type: string, format: uri }
+      responses: *webhookResponses
+  docops.deployment.promoted:
+    post:
+      summary: A build was promoted to an environment
+      operationId: onDeploymentPromoted
+      parameters: *webhookHeaders
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CloudEvent"
+                - type: object
+                  properties:
+                    data: { $ref: "#/components/schemas/Deployment" }
+      responses: *webhookResponses
+  docops.check.completed:
+    post:
+      summary: A quality-gate run completed
+      operationId: onCheckCompleted
+      parameters: *webhookHeaders
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CloudEvent"
+                - type: object
+                  properties:
+                    data: { $ref: "#/components/schemas/CheckRun" }
+      responses: *webhookResponses
+  docops.drift.detected:
+    post:
+      summary: Drift findings were raised on a change
+      operationId: onDriftDetected
+      parameters: *webhookHeaders
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CloudEvent"
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      required: [checkRunId, repository, findings]
+                      properties:
+                        checkRunId: { type: string, format: uuid }
+                        repository: { type: string }
+                        pullRequestNumber: { type: [integer, "null"] }
+                        findings: { type: array, items: { $ref: "#/components/schemas/Finding" } }
+      responses: *webhookResponses
+  docops.suggestion.created:
+    post:
+      summary: An AI suggestion awaits human review
+      operationId: onSuggestionCreated
+      parameters: *webhookHeaders
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CloudEvent"
+                - type: object
+                  properties:
+                    data: { $ref: "#/components/schemas/Suggestion" }
+      responses: *webhookResponses
+  docops.suggestion.decided:
+    post:
+      summary: A human accepted, edited or rejected an AI suggestion
+      operationId: onSuggestionDecided
+      parameters: *webhookHeaders
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CloudEvent"
+                - type: object
+                  properties:
+                    data: { $ref: "#/components/schemas/Suggestion" }
+      responses: *webhookResponses
+  docops.ticket.docs_status_changed:
+    post:
+      summary: A ticket's docs status changed
+      operationId: onTicketDocsStatusChanged
+      parameters: *webhookHeaders
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CloudEvent"
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      required: [ticketKey, previous, current]
+                      properties:
+                        ticketKey: { type: string }
+                        previous: { $ref: "#/components/schemas/DocsStatus" }
+                        current: { $ref: "#/components/schemas/DocsStatus" }
+                        reasons: { type: array, items: { type: string } }
+      responses: *webhookResponses
+  docops.release.readiness_changed:
+    post:
+      summary: Readiness of a fix version changed
+      operationId: onReleaseReadinessChanged
+      parameters: *webhookHeaders
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CloudEvent"
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      required: [project, fixVersion, readyPercent, blockers]
+                      properties:
+                        project: { type: string }
+                        fixVersion: { type: string }
+                        readyPercent: { type: number }
+                        previousReadyPercent: { type: [number, "null"] }
+                        blockers: { type: integer }
+      responses: *webhookResponses
+  docops.page.stale:
+    post:
+      summary: A page breached its freshness SLA or references changed entities
+      operationId: onPageStale
+      parameters: *webhookHeaders
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CloudEvent"
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      required: [pageId, path, reason]
+                      properties:
+                        pageId: { type: string, format: uuid }
+                        path: { type: string }
+                        reason: { type: string, enum: [sla_overdue, entity_changed] }
+                        owners: { type: array, items: { type: string } }
+                        entityKeys: { type: array, items: { type: string } }
+      responses: *webhookResponses
+
+components:
+  securitySchemes:
+    bearerToken:
+      type: http
+      scheme: bearer
+      description: |
+        API tokens (`dop_...`), short-lived tokens from `/v1/auth/oidc-exchange`,
+        or SSO session tokens. Scopes: docs:read, docs:write, checks:write, builds:write,
+        deployments:write, links:write, readiness:read, ai:use, audit:read, admin.
+        The Jira Forge app sends a Forge Invocation Token here instead (`forgeInvocationToken`):
+        it acts as its installation's service account (role `tracker_app`) with the scopes
+        docs:read, readiness:read and links:write.
+    forgeInvocationToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Forge Invocation Token from Forge Remote calls; verified against Atlassian's JWKS.
+    githubSignature:
+      type: apiKey
+      in: header
+      name: X-Hub-Signature-256
+    jiraSignature:
+      type: apiKey
+      in: header
+      name: X-Hub-Signature
+    gitlabToken:
+      type: apiKey
+      in: header
+      name: X-Gitlab-Token
+
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor from a previous response's `nextCursor`.
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: Client-generated key; replays within 24h return the original response.
+      schema: { type: string, maxLength: 255 }
+    RepositoryId:
+      name: repositoryId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SpaceId:
+      name: spaceId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PageId:
+      name: pageId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    EntityId:
+      name: entityId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    BuildId:
+      name: buildId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SuggestionId:
+      name: suggestionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Request is invalid.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Missing or invalid credentials.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: Authenticated but not permitted.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: Resource does not exist or is not visible to the caller.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Conflict:
+      description: State conflict (duplicate, precondition failed, already decided).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    TooManyRequests:
+      description: Rate limit exceeded. See the `RateLimit` and `Retry-After` headers.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details.
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference, example: "https://docs.docops.example/errors/validation" }
+        title: { type: string, example: Validation failed }
+        status: { type: integer, example: 400 }
+        detail: { type: string }
+        instance: { type: string }
+        code: { type: string, example: validation_failed }
+        traceId: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            required: [pointer, message]
+            properties:
+              pointer: { type: string, example: /findings/0/severity }
+              message: { type: string }
+
+    NextCursor:
+      type: [string, "null"]
+      description: Cursor for the next page; null when there are no more results.
+
+    Me:
+      type: object
+      required: [principalType, principalId, tenant, scopes]
+      properties:
+        principalType: { type: string, enum: [user, service_account] }
+        principalId: { type: string, format: uuid }
+        displayName: { type: string }
+        tenant:
+          type: object
+          required: [id, slug, name, region]
+          properties:
+            id: { type: string, format: uuid }
+            slug: { type: string }
+            name: { type: string }
+            region: { type: string }
+        scopes: { type: array, items: { type: string } }
+        roles:
+          type: array
+          items:
+            type: object
+            properties:
+              role: { type: string }
+              scopeType: { type: string }
+              scopeId: { type: [string, "null"] }
+
+    TokenExchangeRequest:
+      type: object
+      required: [grant_type, subject_token, subject_token_type]
+      properties:
+        grant_type: { type: string, const: "urn:ietf:params:oauth:grant-type:token-exchange" }
+        subject_token: { type: string, description: CI OIDC JWT }
+        subject_token_type: { type: string, const: "urn:ietf:params:oauth:token-type:jwt" }
+        audience: { type: string, example: "https://api.docops.example" }
+        scope: { type: string, example: "checks:write builds:write" }
+
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, issued_token_type]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, const: Bearer }
+        expires_in: { type: integer, example: 900 }
+        scope: { type: string }
+        issued_token_type: { type: string, const: "urn:ietf:params:oauth:token-type:access_token" }
+
+    ApiToken:
+      type: object
+      required: [id, name, prefix, scopes, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        prefix: { type: string, example: dop_7Hk2 }
+        principalType: { type: string, enum: [user, service_account] }
+        scopes: { type: array, items: { type: string } }
+        expiresAt: { type: [string, "null"], format: date-time }
+        lastUsedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    ApiTokenCreate:
+      type: object
+      required: [name, scopes]
+      properties:
+        name: { type: string, maxLength: 100 }
+        scopes: { type: array, minItems: 1, items: { type: string } }
+        serviceAccount: { type: string, description: Service account name (created if absent) }
+        expiresInDays: { type: integer, minimum: 1, maximum: 365, default: 90 }
+
+    ApiTokenCreated:
+      allOf:
+        - $ref: "#/components/schemas/ApiToken"
+        - type: object
+          required: [token]
+          properties:
+            token: { type: string, description: The secret. Shown once. }
+
+    RoleBinding:
+      type: object
+      required: [id, principalType, principalId, role, scopeType]
+      properties:
+        id: { type: string, format: uuid }
+        principalType: { type: string, enum: [user, group, service_account] }
+        principalId: { type: string, format: uuid }
+        role: { $ref: "#/components/schemas/Role" }
+        scopeType: { type: string, enum: [org, space, page] }
+        scopeId: { type: [string, "null"], format: uuid }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    RoleBindingCreate:
+      type: object
+      required: [principalType, principalId, role, scopeType]
+      properties:
+        principalType: { type: string, enum: [user, group, service_account] }
+        principalId: { type: string, format: uuid }
+        role: { $ref: "#/components/schemas/Role" }
+        scopeType: { type: string, enum: [org, space, page] }
+        scopeId: { type: [string, "null"], format: uuid }
+
+    Role:
+      type: string
+      enum: [org_owner, org_admin, space_admin, maintainer, editor, commenter, viewer, auditor, billing_admin, ci_publisher, tracker_app]
+
+    Repository:
+      type: object
+      required: [id, provider, fullName, defaultBranch, status]
+      properties:
+        id: { type: string, format: uuid }
+        provider: { type: string, enum: [github, gitlab, bitbucket, azure_devops, local] }
+        fullName: { type: string, example: acme/payments }
+        defaultBranch: { type: string, example: main }
+        webUrl: { type: [string, "null"], format: uri }
+        configPath: { type: string, example: docops.yaml }
+        status: { type: string, enum: [active, needs_attention, disconnected] }
+        lastIndexedSha: { type: [string, "null"] }
+        lastIndexedAt: { type: [string, "null"], format: date-time }
+
+    RepositoryConnect:
+      type: object
+      required: [provider, fullName]
+      properties:
+        provider: { type: string, enum: [github, gitlab, bitbucket, azure_devops, local] }
+        fullName: { type: string }
+        installationId: { type: string }
+        defaultBranch: { type: string, default: main }
+        configPath: { type: string, default: docops.yaml }
+        webUrl: { type: string, format: uri }
+
+    Space:
+      type: object
+      required: [id, key, name, docsRoot, defaultAudience]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string, example: payments }
+        name: { type: string, example: Payments Platform }
+        repositoryId: { type: [string, "null"], format: uuid }
+        docsRoot: { type: string, example: docs }
+        defaultAudience: { type: string, example: internal }
+        baseUrl: { type: [string, "null"], format: uri }
+
+    Version:
+      type: object
+      required: [id, name, gitRef, commitSha, kind, status, isDefault]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: "2.4" }
+        gitRef: { type: string, example: refs/tags/v2.4.0 }
+        commitSha: { type: string }
+        kind: { type: string, enum: [tag, branch] }
+        status: { type: string, enum: [building, published, archived] }
+        isDefault: { type: boolean }
+        publishedAt: { type: [string, "null"], format: date-time }
+
+    PageType:
+      type: string
+      enum: [guide, how_to, tutorial, concept, reference, generated_reference, runbook, adr, postmortem, release_notes, onboarding, snippet, other]
+
+    PageSummary:
+      type: object
+      required: [id, spaceId, path, slug, title, pageType]
+      properties:
+        id: { type: string, format: uuid }
+        spaceId: { type: string, format: uuid }
+        path: { type: string, example: guides/refunds.md }
+        slug: { type: string, example: guides/refunds }
+        title: { type: string }
+        pageType: { $ref: "#/components/schemas/PageType" }
+        audience: { type: array, items: { type: string } }
+
+    Page:
+      allOf:
+        - $ref: "#/components/schemas/PageSummary"
+        - type: object
+          required: [revision]
+          properties:
+            revision:
+              type: object
+              required: [id, commitSha, contentHash]
+              properties:
+                id: { type: string, format: uuid }
+                commitSha: { type: string }
+                contentHash: { type: string }
+                frontmatter: { type: object, additionalProperties: true }
+                headings:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      depth: { type: integer }
+                      text: { type: string }
+                      anchor: { type: string }
+                wordCount: { type: integer }
+                reviewedOn: { type: [string, "null"], format: date }
+                committedAt: { type: string, format: date-time }
+            owners: { type: array, items: { type: string } }
+            ticketKeys: { type: array, items: { type: string } }
+
+    PageGraph:
+      type: object
+      required: [page, entities, tickets, owners]
+      properties:
+        page: { $ref: "#/components/schemas/PageSummary" }
+        entities:
+          type: array
+          items:
+            type: object
+            required: [key, kind, referenceKind, stale]
+            properties:
+              key: { type: string }
+              kind: { type: string }
+              referenceKind: { type: string, enum: [explicit, link, mention, code_sample, generated] }
+              line: { type: [integer, "null"] }
+              stale: { type: boolean, description: Entity changed since the page was written against it. }
+        tickets:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              title: { type: string }
+              docsStatus: { $ref: "#/components/schemas/DocsStatus" }
+              linkSource: { type: string }
+              url: { type: string, format: uri }
+        owners: { type: array, items: { type: string } }
+
+    EntityReference:
+      type: object
+      required: [pageId, path, kind]
+      properties:
+        pageId: { type: string, format: uuid }
+        path: { type: string }
+        kind: { type: string, enum: [explicit, link, mention, code_sample, generated] }
+        line: { type: [integer, "null"] }
+        stale: { type: boolean }
+
+    Entity:
+      type: object
+      required: [id, key, kind, name, sourceKey, visibility, fingerprint]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string, example: "api.operation:payments-api:POST /v1/payments" }
+        kind: { type: string, example: api.operation }
+        name: { type: string, example: createPayment }
+        sourceKey: { type: string, example: payments-api }
+        parentKey: { type: [string, "null"] }
+        visibility: { type: string, enum: [public, internal, deprecated] }
+        fingerprint: { type: string }
+        attributes: { type: object, additionalProperties: true }
+        documented: { type: boolean }
+
+    EntitySnapshot:
+      type: object
+      required: [fingerprint, attributes, introducedSha, introducedAt]
+      properties:
+        fingerprint: { type: string }
+        attributes: { type: object, additionalProperties: true }
+        introducedSha: { type: string }
+        introducedAt: { type: string, format: date-time }
+        supersededAt: { type: [string, "null"], format: date-time }
+
+    Coverage:
+      type: object
+      required: [spaceId, generatedAt, totals, byKind]
+      properties:
+        spaceId: { type: string, format: uuid }
+        version: { type: [string, "null"] }
+        generatedAt: { type: string, format: date-time }
+        totals: { $ref: "#/components/schemas/CoverageCounts" }
+        byKind:
+          type: array
+          items:
+            allOf:
+              - type: object
+                required: [kind]
+                properties:
+                  kind: { type: string }
+              - $ref: "#/components/schemas/CoverageCounts"
+        undocumented:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              kind: { type: string }
+
+    CoverageCounts:
+      type: object
+      required: [publicEntities, documentedL1, documentedL2, percentL1, percentL2]
+      properties:
+        publicEntities: { type: integer }
+        documentedL1: { type: integer, description: Has a generated reference with a human-written description. }
+        documentedL2: { type: integer, description: "Referenced by at least one guide, how-to or tutorial." }
+        percentL1: { type: number }
+        percentL2: { type: number }
+
+    Freshness:
+      type: object
+      required: [spaceId, pagesWithSla, fresh, overdue, stale, percentFresh]
+      properties:
+        spaceId: { type: string, format: uuid }
+        pagesWithSla: { type: integer }
+        fresh: { type: integer }
+        overdue: { type: integer }
+        stale: { type: integer }
+        percentFresh: { type: number }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              pageId: { type: string, format: uuid }
+              path: { type: string }
+              slaDays: { type: integer }
+              lastReviewedAt: { type: [string, "null"], format: date-time }
+              reason: { type: string, enum: [sla_overdue, entity_changed] }
+
+    Snapshot:
+      type: object
+      description: Extracted content graph for one space at one commit.
+      required: [repository, commitSha, spaceKey, pages, entities]
+      properties:
+        repository:
+          type: object
+          required: [provider, fullName]
+          properties:
+            provider: { type: string }
+            fullName: { type: string }
+        commitSha: { type: string }
+        ref: { type: string }
+        committedAt: { type: string, format: date-time }
+        spaceKey: { type: string }
+        spaceName: { type: string }
+        configDigest: { type: string }
+        sources:
+          type: array
+          items:
+            type: object
+            required: [key, format, path]
+            properties:
+              key: { type: string }
+              format: { type: string }
+              path: { type: string }
+              extractor: { type: string }
+              extractorVersion: { type: string }
+        pages:
+          type: array
+          items:
+            type: object
+            required: [path, title, contentHash]
+            properties:
+              path: { type: string }
+              title: { type: string }
+              pageType: { $ref: "#/components/schemas/PageType" }
+              contentHash: { type: string }
+              frontmatter: { type: object, additionalProperties: true }
+              headings: { type: array, items: { type: object } }
+              wordCount: { type: integer }
+              tickets: { type: array, items: { type: string } }
+              owners: { type: array, items: { type: string } }
+              references:
+                type: array
+                items:
+                  type: object
+                  required: [entityKey, kind, entityFingerprint]
+                  properties:
+                    entityKey: { type: string }
+                    kind: { type: string }
+                    line: { type: [integer, "null"] }
+                    confidence: { type: number }
+                    entityFingerprint: { type: string }
+        entities:
+          type: array
+          items:
+            type: object
+            required: [key, kind, name, sourceKey, fingerprint]
+            properties:
+              key: { type: string }
+              kind: { type: string }
+              name: { type: string }
+              sourceKey: { type: string }
+              parentKey: { type: [string, "null"] }
+              visibility: { type: string, enum: [public, internal, deprecated] }
+              fingerprint: { type: string }
+              attributes: { type: object, additionalProperties: true }
+              surfaceForms: { type: array, items: { type: string } }
+
+    SnapshotAccepted:
+      type: object
+      required: [spaceId, pages, entities, references]
+      properties:
+        spaceId: { type: string, format: uuid }
+        pages: { type: integer }
+        entities: { type: integer }
+        references: { type: integer }
+        changedEntities: { type: integer }
+
+    Severity:
+      type: string
+      enum: [info, warning, error]
+
+    Finding:
+      type: object
+      required: [ruleId, category, severity, message, fingerprint]
+      properties:
+        id: { type: string, format: uuid }
+        ruleId: { type: string, example: drift/stale-reference }
+        category: { type: string, example: drift }
+        severity: { $ref: "#/components/schemas/Severity" }
+        origin: { type: string, enum: [deterministic, ai], default: deterministic }
+        message: { type: string }
+        file: { type: [string, "null"] }
+        line: { type: [integer, "null"] }
+        endLine: { type: [integer, "null"] }
+        entityKey: { type: [string, "null"] }
+        evidence: { type: object, additionalProperties: true }
+        suggestion:
+          type: [object, "null"]
+          properties:
+            kind: { type: string, enum: [replacement, patch] }
+            line: { type: integer }
+            replacement: { type: string, description: Full replacement text for the line. }
+            patch: { type: string, description: Unified diff. }
+            aiSuggestionId: { type: string, format: uuid }
+        fingerprint: { type: string }
+        state: { $ref: "#/components/schemas/FindingState" }
+
+    FindingState:
+      type: object
+      required: [fingerprint, status]
+      properties:
+        fingerprint: { type: string }
+        status: { type: string, enum: [open, fixed, dismissed, accepted_risk] }
+        dismissedBy: { type: [string, "null"] }
+        dismissalReason: { type: [string, "null"], enum: [false_positive, wont_fix, not_applicable, other, null] }
+        dismissalNote: { type: [string, "null"] }
+
+    DismissFindingRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, enum: [false_positive, wont_fix, not_applicable, other] }
+        note: { type: string, maxLength: 2000 }
+
+    CheckSummary:
+      type: object
+      required: [counts, gate]
+      properties:
+        counts:
+          type: object
+          required: [error, warning, info]
+          properties:
+            error: { type: integer }
+            warning: { type: integer }
+            info: { type: integer }
+        byCategory:
+          type: object
+          additionalProperties: { type: integer }
+        coverage:
+          type: object
+          properties:
+            percentL1: { type: number }
+            percentL2: { type: number }
+        gate:
+          type: object
+          required: [blocked]
+          properties:
+            blocked: { type: boolean }
+            reasons: { type: array, items: { type: string } }
+
+    CheckRunCreate:
+      type: object
+      required: [repository, headSha, conclusion, summary, findings]
+      properties:
+        repository:
+          type: object
+          required: [provider, fullName]
+          properties:
+            provider: { type: string }
+            fullName: { type: string }
+        headSha: { type: string }
+        baseSha: { type: [string, "null"] }
+        ref: { type: string }
+        pullRequestNumber: { type: [integer, "null"] }
+        cliVersion: { type: string }
+        rulesetHash: { type: string }
+        conclusion: { type: string, enum: [success, neutral, failure, skipped] }
+        summary: { $ref: "#/components/schemas/CheckSummary" }
+        findings: { type: array, maxItems: 5000, items: { $ref: "#/components/schemas/Finding" } }
+
+    CheckRun:
+      type: object
+      required: [id, repositoryId, headSha, source, conclusion, summary]
+      properties:
+        id: { type: string, format: uuid }
+        repositoryId: { type: string, format: uuid }
+        headSha: { type: string }
+        baseSha: { type: [string, "null"] }
+        pullRequestNumber: { type: [integer, "null"] }
+        source: { type: string, enum: [cli, hosted] }
+        conclusion: { type: string, enum: [success, neutral, failure, skipped] }
+        summary: { $ref: "#/components/schemas/CheckSummary" }
+        findingsCount: { type: integer }
+        dismissedFingerprints: { type: array, items: { type: string } }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: [string, "null"], format: date-time }
+
+    BuildCreate:
+      type: object
+      required: [spaceKey, versionName, commitSha, kind, manifest]
+      properties:
+        spaceKey: { type: string }
+        versionName: { type: string, example: latest }
+        audience: { type: string, default: internal }
+        commitSha: { type: string }
+        ref: { type: string }
+        pullRequestNumber: { type: [integer, "null"] }
+        kind: { type: string, enum: [preview, branch, release] }
+        manifest:
+          type: object
+          required: [files]
+          properties:
+            files:
+              type: array
+              maxItems: 100000
+              items:
+                type: object
+                required: [path, digest, size, contentType]
+                properties:
+                  path: { type: string }
+                  digest: { type: string, pattern: "^[a-f0-9]{64}$" }
+                  size: { type: integer }
+                  contentType: { type: string }
+        stats:
+          type: object
+          properties:
+            pageCount: { type: integer }
+            cachedPages: { type: integer }
+
+    BuildCreated:
+      type: object
+      required: [build, missingDigests]
+      properties:
+        build: { $ref: "#/components/schemas/Build" }
+        missingDigests: { type: array, items: { type: string } }
+
+    Build:
+      type: object
+      required: [id, spaceId, versionName, audience, commitSha, kind, status]
+      properties:
+        id: { type: string, format: uuid }
+        spaceId: { type: string, format: uuid }
+        versionName: { type: string }
+        audience: { type: string }
+        commitSha: { type: string }
+        kind: { type: string, enum: [preview, branch, release] }
+        status: { type: string, enum: [pending, uploading, ready, failed, expired] }
+        manifestDigest: { type: [string, "null"] }
+        signature: { type: [string, "null"] }
+        pageCount: { type: [integer, "null"] }
+        fileCount: { type: [integer, "null"] }
+        totalBytes: { type: [integer, "null"] }
+        previewUrl: { type: [string, "null"], format: uri }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: [string, "null"], format: date-time }
+
+    DeploymentCreate:
+      type: object
+      required: [buildId, environment]
+      properties:
+        buildId: { type: string, format: uuid }
+        environment: { type: string, example: staging }
+        approvedBy: { type: string, description: Required for environments with requireApproval. }
+
+    Deployment:
+      type: object
+      required: [id, buildId, spaceId, environment, versionName, audience, status, promotedBy, promotedAt]
+      properties:
+        id: { type: string, format: uuid }
+        buildId: { type: string, format: uuid }
+        spaceId: { type: string, format: uuid }
+        environment: { type: string }
+        versionName: { type: string }
+        audience: { type: string }
+        url: { type: [string, "null"], format: uri }
+        status: { type: string, enum: [active, superseded, rolled_back] }
+        promotedBy: { type: string }
+        approvedBy: { type: [string, "null"] }
+        promotedAt: { type: string, format: date-time }
+
+    DocsStatus:
+      type: string
+      enum: [not_required, missing, in_review, merged, published, stale]
+
+    TicketDocs:
+      type: object
+      required: [ticket, docsStatus, reasons, links]
+      properties:
+        ticket:
+          type: object
+          required: [key, title, url]
+          properties:
+            key: { type: string }
+            title: { type: string }
+            status: { type: [string, "null"] }
+            docsRequired: { type: string, enum: [yes, no, unknown] }
+            fixVersions: { type: array, items: { type: string } }
+            url: { type: string, format: uri }
+        docsStatus: { $ref: "#/components/schemas/DocsStatus" }
+        reasons: { type: array, items: { type: string } }
+        links: { type: array, items: { $ref: "#/components/schemas/Link" } }
+        pages:
+          type: array
+          items:
+            type: object
+            properties:
+              pageId: { type: string, format: uuid }
+              path: { type: string }
+              title: { type: string }
+              url: { type: [string, "null"], format: uri }
+              stale: { type: boolean }
+        pullRequests:
+          type: array
+          items:
+            type: object
+            properties:
+              repository: { type: string }
+              number: { type: integer }
+              title: { type: string }
+              state: { type: string, enum: [open, closed, merged] }
+              touchesDocs: { type: boolean }
+              url: { type: string, format: uri }
+
+    Link:
+      type: object
+      required: [id, ticketKey, targetType, source, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        ticketKey: { type: string }
+        targetType: { type: string, enum: [page, pull_request, commit, release, entity] }
+        targetId: { type: [string, "null"], format: uuid }
+        targetRef: { type: [string, "null"] }
+        source: { type: string, enum: [frontmatter, pr_title, pr_body, branch_name, commit_message, tracker_panel, api, inferred] }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    LinkCreate:
+      type: object
+      required: [ticketKey, targetType]
+      properties:
+        ticketKey: { type: string, pattern: "^[A-Z][A-Z0-9_]+-[0-9]+$" }
+        tracker: { type: string, enum: [jira, jira_dc, linear, azure_boards, github], default: jira }
+        targetType: { type: string, enum: [page, pull_request, release, entity] }
+        targetId: { type: string, format: uuid }
+        spaceKey: { type: string, description: "With pagePath, identifies a page by path." }
+        pagePath: { type: string }
+
+    ReadinessItem:
+      type: object
+      required: [ticketKey, title, docsRequired, docsStatus, reasons]
+      properties:
+        ticketKey: { type: string }
+        title: { type: string }
+        issueType: { type: [string, "null"] }
+        status: { type: [string, "null"] }
+        docsRequired: { type: string, enum: [yes, no, unknown] }
+        docsStatus: { $ref: "#/components/schemas/DocsStatus" }
+        reasons: { type: array, items: { type: string } }
+        pages: { type: array, items: { type: string } }
+        pullRequests: { type: array, items: { type: integer } }
+        url: { type: string, format: uri }
+
+    Readiness:
+      type: object
+      required: [project, fixVersion, generatedAt, summary, items]
+      properties:
+        tracker: { type: string }
+        project: { type: string }
+        fixVersion: { type: string }
+        generatedAt: { type: string, format: date-time }
+        dataAsOf: { type: string, format: date-time }
+        summary:
+          type: object
+          required: [total, byStatus, readyPercent, blockers, inReview, ready]
+          properties:
+            total: { type: integer }
+            byStatus:
+              type: object
+              additionalProperties: { type: integer }
+            readyPercent: { type: number, description: "(published + merged + not_required) / total x 100" }
+            ready: { type: boolean, description: True when there are no blockers and nothing in review. }
+            blockers: { type: integer, description: missing + stale }
+            inReview: { type: integer }
+        items: { type: array, items: { $ref: "#/components/schemas/ReadinessItem" } }
+
+    DocTasksRequest:
+      type: object
+      required: [project, fixVersion]
+      properties:
+        project: { type: string }
+        fixVersion: { type: string }
+        ticketKeys:
+          type: array
+          description: Defaults to every ticket whose docs status is missing.
+          items: { type: string }
+        issueType: { type: string, default: Sub-task }
+
+    DocTasksResult:
+      type: object
+      required: [created, skipped]
+      properties:
+        created:
+          type: array
+          items:
+            type: object
+            properties:
+              parentKey: { type: string }
+              key: { type: string }
+              url: { type: string, format: uri }
+        skipped:
+          type: array
+          items:
+            type: object
+            properties:
+              parentKey: { type: string }
+              reason: { type: string }
+
+    Traceability:
+      type: object
+      required: [project, fixVersion, rows]
+      properties:
+        project: { type: string }
+        fixVersion: { type: string }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              requirement: { type: [string, "null"] }
+              ticket: { type: string }
+              docsStatus: { $ref: "#/components/schemas/DocsStatus" }
+              pullRequest: { type: [integer, "null"] }
+              commit: { type: [string, "null"] }
+              mergedAt: { type: [string, "null"], format: date-time }
+              approvers: { type: array, items: { type: string } }
+              docPage: { type: [string, "null"] }
+              buildDigest: { type: [string, "null"] }
+              environment: { type: [string, "null"] }
+              releasedAt: { type: [string, "null"], format: date-time }
+
+    Release:
+      type: object
+      required: [id, name, status]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        tag: { type: [string, "null"] }
+        commitSha: { type: [string, "null"] }
+        status: { type: string, enum: [planned, released, archived] }
+        releasedAt: { type: [string, "null"], format: date-time }
+        trackerVersionId: { type: [string, "null"] }
+
+    SearchResults:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [pageId, title, url, snippet, score]
+            properties:
+              chunkId: { type: string, format: uuid }
+              pageId: { type: string, format: uuid }
+              title: { type: string }
+              headingPath: { type: string }
+              url: { type: string }
+              snippet: { type: string }
+              version: { type: string }
+              score: { type: number }
+
+    AskRequest:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string, minLength: 3, maxLength: 2000 }
+        spaceId: { type: string, format: uuid }
+        version: { type: string }
+        audience: { type: string }
+        conversationId: { type: string }
+
+    Citation:
+      type: object
+      required: [id, pageId, title, url, quote]
+      properties:
+        id: { type: string, example: S1 }
+        pageId: { type: string, format: uuid }
+        title: { type: string }
+        version: { type: string }
+        url: { type: string, description: "Exact page, version and anchor." }
+        quote: { type: string, description: Verbatim supporting text from the cited chunk. }
+
+    AskResponse:
+      type: object
+      required: [answerId, status, answer, citations]
+      properties:
+        answerId: { type: string, format: uuid }
+        status: { type: string, enum: [answered, partial, not_documented, refused] }
+        answer: { type: string, description: "Markdown with [S1]-style citation markers." }
+        citations: { type: array, items: { $ref: "#/components/schemas/Citation" } }
+        model:
+          type: object
+          properties:
+            provider: { type: string }
+            model: { type: string }
+            promptVersion: { type: string }
+
+    Suggestion:
+      type: object
+      required: [id, kind, status, provenance, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [drift_patch, semantic_drift, draft, release_notes, gap_cluster] }
+        status: { type: string, enum: [proposed, accepted, edited, rejected, expired, failed_validation] }
+        findingId: { type: [string, "null"], format: uuid }
+        pageId: { type: [string, "null"], format: uuid }
+        pullRequestNumber: { type: [integer, "null"] }
+        patch: { type: [string, "null"], description: Unified diff limited to the flagged lines. }
+        output: { type: object, additionalProperties: true }
+        confidence: { type: [number, "null"], minimum: 0, maximum: 1 }
+        provenance:
+          type: object
+          required: [provider, model, promptTemplate, promptVersion, inputs]
+          properties:
+            provider: { type: string }
+            model: { type: string }
+            promptTemplate: { type: string }
+            promptVersion: { type: string }
+            inputs:
+              type: array
+              items:
+                type: object
+                properties:
+                  type: { type: string }
+                  id: { type: string }
+                  contentHash: { type: string }
+        validation: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+        decidedBy: { type: [string, "null"] }
+        decidedAt: { type: [string, "null"], format: date-time }
+
+    SuggestionDecision:
+      type: object
+      properties:
+        note: { type: string, maxLength: 2000 }
+        editedPatch: { type: string, description: "When present, the suggestion is recorded as `edited`." }
+
+    Feedback:
+      type: object
+      required: [rating]
+      properties:
+        pageId: { type: string, format: uuid }
+        answerId: { type: string, format: uuid }
+        rating: { type: integer, enum: [-1, 1] }
+        comment: { type: string, maxLength: 2000 }
+
+    AuditEvent:
+      type: object
+      required: [id, seq, occurredAt, actor, action, resource, outcome, hash]
+      properties:
+        id: { type: string, format: uuid }
+        seq: { type: integer }
+        occurredAt: { type: string, format: date-time }
+        actor:
+          type: object
+          required: [type, id]
+          properties:
+            type: { type: string, enum: [user, service_account, system, ai] }
+            id: { type: string }
+            display: { type: [string, "null"] }
+            ip: { type: [string, "null"] }
+            userAgent: { type: [string, "null"] }
+            authMethod: { type: [string, "null"] }
+        action: { type: string, example: deployment.promoted }
+        resource:
+          type: object
+          required: [type]
+          properties:
+            type: { type: string }
+            id: { type: [string, "null"] }
+        outcome: { type: string, enum: [success, failure, denied] }
+        reason: { type: [string, "null"] }
+        requestId: { type: [string, "null"] }
+        traceId: { type: [string, "null"] }
+        details: { type: object, additionalProperties: true }
+        prevHash: { type: [string, "null"], description: hex }
+        hash: { type: string, description: hex }
+
+    Export:
+      type: object
+      required: [id, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        downloadUrl: { type: [string, "null"], format: uri }
+        expiresAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    WebhookSubscription:
+      type: object
+      required: [id, url, eventTypes, active]
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string, format: uri }
+        description: { type: [string, "null"] }
+        eventTypes: { type: array, items: { type: string } }
+        active: { type: boolean }
+        failureCount: { type: integer }
+        lastDeliveryAt: { type: [string, "null"], format: date-time }
+
+    WebhookSubscriptionCreate:
+      type: object
+      required: [url, eventTypes]
+      properties:
+        url: { type: string, format: uri, pattern: "^https://" }
+        description: { type: string }
+        eventTypes:
+          type: array
+          minItems: 1
+          items: { type: string, example: docops.page.published }
+
+    CloudEvent:
+      type: object
+      description: CloudEvents 1.0 JSON envelope.
+      required: [specversion, id, source, type, time, tenantid, data]
+      properties:
+        specversion: { type: string, const: "1.0" }
+        id: { type: string }
+        source: { type: string, example: "docops://cells/us-1/api" }
+        type: { type: string, example: docops.page.published }
+        subject: { type: string }
+        time: { type: string, format: date-time }
+        tenantid: { type: string, format: uuid }
+        traceparent: { type: string }
+        dataschema: { type: string, format: uri }
+        datacontenttype: { type: string, const: application/json }
+        data: {}
+
+    PagePublishedData:
+      type: object
+      required: [spaceKey, environment, versionName, buildId, pages]
+      properties:
+        spaceKey: { type: string }
+        environment: { type: string }
+        versionName: { type: string }
+        audience: { type: string }
+        buildId: { type: string, format: uuid }
+        pages:
+          type: array
+          items:
+            type: object
+            required: [path, url]
+            properties:
+              path: { type: string }
+              url: { type: string, format: uri }
+              change: { type: string, enum: [added, modified, removed] }

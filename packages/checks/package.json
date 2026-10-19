@@ -1,0 +1,10 @@
+{
+  "name": "@docops/checks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": { "@docops/core": "*", "@docops/config": "*", "@docops/engine": "*", "@docops/markdown": "*" }
+}

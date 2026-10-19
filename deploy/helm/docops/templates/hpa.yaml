@@ -1,0 +1,74 @@
+{{- /*
+Horizontal Pod Autoscalers on CPU (and memory when a target is set): one for the API, and one per
+worker group. For queue-lag based scaling of the workers use KEDA instead (docs/02 §3.3).
+*/ -}}
+{{- if .Values.api.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "docops.apiName" . }}
+  labels:
+    {{- include "docops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "docops.apiName" . }}
+  minReplicas: {{ .Values.api.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.api.autoscaling.maxReplicas }}
+  metrics:
+    {{- with .Values.api.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+    {{- with .Values.api.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+{{- end }}
+{{- if and .Values.worker.enabled .Values.worker.autoscaling.enabled }}
+{{- range $group := .Values.worker.groups }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "docops.workerName" (dict "root" $ "group" $group) }}
+  labels:
+    {{- include "docops.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: worker
+    docops.io/worker-group: {{ $group.name | quote }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "docops.workerName" (dict "root" $ "group" $group) }}
+  minReplicas: {{ $.Values.worker.autoscaling.minReplicas }}
+  maxReplicas: {{ $.Values.worker.autoscaling.maxReplicas }}
+  metrics:
+    {{- with $.Values.worker.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+    {{- with $.Values.worker.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,72 @@
+name: DocOps
+description: Docs quality gates, drift detection, previews and publishing for docs-as-code.
+author: DocOps
+branding:
+  icon: book-open
+  color: blue
+
+inputs:
+  command:
+    description: check | build | publish
+    required: false
+    default: check
+  base:
+    description: Base ref for schema-change and drift detection (e.g. origin/main). Defaults to the PR base.
+    required: false
+  config:
+    description: Path to docops.yaml.
+    required: false
+    default: docops.yaml
+  working-directory:
+    description: Directory containing docops.yaml.
+    required: false
+    default: .
+  fail-on:
+    description: error | warning | never. Overrides checks.failOn.
+    required: false
+  comment:
+    description: Create or update a sticky PR comment with the summary and suggestions.
+    required: false
+    default: "true"
+  annotations:
+    description: Emit inline annotations for findings on changed lines.
+    required: false
+    default: "true"
+  preview:
+    description: Build and upload a PR preview (requires the DocOps platform).
+    required: false
+    default: "false"
+  sarif:
+    description: Also write a SARIF 2.1.0 report to this path.
+    required: false
+  environment:
+    description: For command=publish, the environment to promote to (dev, staging, prod).
+    required: false
+  version:
+    description: Version label for build/publish (defaults to config or "latest").
+    required: false
+  api-url:
+    description: DocOps API URL. Omit to run fully offline (deterministic gates only).
+    required: false
+  github-token:
+    description: Token used for PR comments and check annotations.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  conclusion:
+    description: success | failure | neutral
+  errors:
+    description: Number of blocking findings.
+  warnings:
+    description: Number of warning findings.
+  coverage:
+    description: Coverage percentage for the configured entity kinds.
+  preview-url:
+    description: Preview URL when preview=true.
+  sarif-file:
+    description: Path of the SARIF report when sarif is set.
+
+runs:
+  using: node24
+  main: dist/index.js

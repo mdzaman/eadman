@@ -1,0 +1,313 @@
+# Default values for the DocOps chart.
+#
+# What is deployed: the API (Deployment + Service + optional Ingress) and one or more worker
+# Deployments (same image, `node apps/worker/src/main.ts`). PostgreSQL 17 with pgvector is NOT part
+# of the chart: bring your own and point the chart at it (database.*).
+#
+# Not in the chart yet, because the services read no configuration for them: AI gateway settings
+# and OpenTelemetry export. See "Planned" in deploy/README.md.
+#
+# Minimal install:
+#   kubectl create secret generic docops-database --from-literal=DATABASE_URL='postgres://user:pass@pg:5432/docops?sslmode=require'
+#   helm install docops deploy/helm/docops --set database.existingSecret=docops-database
+# Air-gapped: see values-airgapped.yaml and deploy/README.md.
+
+global:
+  # Registry (and optional path prefix) for every image, for mirrored or air-gapped registries,
+  # for example "registry.internal.example/mirror". Overrides image.registry.
+  imageRegistry: ""
+  # Pull secrets for private registries, as a list of { name: <secret> }.
+  imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  registry: ghcr.io
+  repository: docops/server
+  # Defaults to the chart's appVersion.
+  tag: ""
+  # An immutable reference such as "sha256:..."; when set it replaces the tag.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# Region cell this install serves (DOCOPS_CELL), for example us-1 or eu-1.
+cell: us-1
+
+# External base URL of the API (DOCOPS_PUBLIC_URL): used in preview links and webhooks.
+# Empty: derived from the first ingress host, else the in-cluster service URL.
+publicUrl: ""
+
+# ---- PostgreSQL ------------------------------------------------------------------------------
+database:
+  # Name of a Secret that holds DATABASE_URL (postgres://...). If empty the chart expects a Secret
+  # named "<release>-database". The role in the URL needs to run the migrations: see deploy/README.md.
+  existingSecret: ""
+  secretKey: DATABASE_URL
+  # NetworkPolicy: where the database is. A list of NetworkPolicyPeer objects, for example
+  #   - ipBlock: { cidr: 10.20.0.0/24 }
+  #   - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: data } }
+  #     podSelector: { matchLabels: { app: postgres } }
+  # Empty means "pods in this release's namespace", which fits an in-namespace Postgres.
+  egress:
+    to: []
+    ports: [5432]
+
+# ---- Blob storage ----------------------------------------------------------------------------
+# Where the API keeps uploaded builds and blobs (the workers use none):
+#   filesystem  a volume at DOCOPS_BLOB_DIR. Several API replicas need one ReadWriteMany claim.
+#   s3          an S3-compatible bucket (AWS S3, MinIO, Ceph RGW, ...). Any number of API replicas,
+#               no shared volume.
+objectStorage:
+  type: filesystem
+  filesystem:
+    # A PersistentVolumeClaim to mount at DOCOPS_BLOB_DIR.
+    # Required when api.replicaCount is greater than 1 or api.autoscaling is enabled (the render
+    # fails without it): every replica must see the same blobs, so the claim must be ReadWriteMany.
+    # Empty uses an emptyDir: blobs are lost when the pod restarts, so that is for evaluation only.
+    existingClaim: ""
+    emptyDirSizeLimit: 10Gi
+  s3:
+    # DOCOPS_S3_BUCKET, required with type s3. The bucket must exist: the API does not create it.
+    bucket: ""
+    # DOCOPS_S3_REGION, the region in the request signature. us-east-1 suits most S3-compatible services.
+    region: us-east-1
+    # DOCOPS_S3_ENDPOINT, for example http://minio.storage.svc:9000. Empty means AWS S3:
+    # https://s3.<region>.amazonaws.com.
+    endpoint: ""
+    # DOCOPS_S3_FORCE_PATH_STYLE: request <endpoint>/<bucket>/<key> instead of <bucket>.<endpoint>/<key>.
+    # Most self-hosted services need true. A bucket name with dots, or an IP endpoint, always uses paths.
+    forcePathStyle: false
+    # The access key, from a Secret: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be there (the API
+    # pod does not start without them), AWS_SESSION_TOKEN is optional. It needs s3:GetObject and
+    # s3:PutObject on the bucket's objects, and s3:ListBucket on the bucket so that a missing object
+    # answers 404 rather than 403. Empty existingSecret: the chart's Secret (secrets.existingSecret, or
+    # the generated one, where secrets.values can add the keys). Change the key names to read a Secret
+    # made by another tool.
+    credentials:
+      existingSecret: ""
+      accessKeyIdKey: AWS_ACCESS_KEY_ID
+      secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+      sessionTokenKey: AWS_SESSION_TOKEN
+    # NetworkPolicy: where the endpoint is, for an egress rule that only the API pods get. A list of
+    # NetworkPolicyPeer objects and the ports, for example an in-cluster MinIO:
+    #   to:
+    #     - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: storage } }
+    #       podSelector: { matchLabels: { app: minio } }
+    #   ports: [9000]
+    # or an S3 interface VPC endpoint: to: [{ ipBlock: { cidr: 10.0.64.0/20 } }], ports: [443].
+    # Empty: no rule is added, so the endpoint must be reachable another way (egress.allowInternet
+    # for AWS's public endpoints, or egress.allowedCidrs).
+    egress:
+      to: []
+      ports: [443]
+
+# ---- Secrets ---------------------------------------------------------------------------------
+secrets:
+  # A Secret you manage (External Secrets, Vault, sealed-secrets, ...). Recommended. It may hold:
+  #   DOCOPS_TOKEN_SIGNING_SECRET, DOCOPS_PREVIEW_SECRET   shared by every API replica
+  #   DOCOPS_SIGNING_KEY_PEM    the Ed25519 key that signs builds. Every API replica must share it:
+  #                             a replica only verifies signatures made with its own key, so with
+  #                             separate keys a build finalized on one replica cannot be promoted
+  #                             by another, or by the same pod after a restart.
+  #                             Create it with: openssl genpkey -algorithm ed25519
+  #   DOCOPS_BOOTSTRAP_TOKEN    first admin token, dop_ + 20 or more letters or digits
+  #   GITHUB_WEBHOOK_SECRET, JIRA_WEBHOOK_SECRET
+  #   JIRA_EMAIL, JIRA_API_TOKEN
+  # Missing keys are skipped (the API then generates ephemeral values and logs a warning).
+  existingSecret: ""
+  # When existingSecret is empty the chart creates a Secret named "<release>". It generates
+  # DOCOPS_TOKEN_SIGNING_SECRET, DOCOPS_PREVIEW_SECRET and an Ed25519 DOCOPS_SIGNING_KEY_PEM once
+  # and keeps them across upgrades (it looks the old Secret up, which does not work with
+  # `helm template` or GitOps tools that render offline: use existingSecret there). Extra keys can
+  # be given here; they end up in the Secret in plain text in your values, so prefer existingSecret
+  # for real credentials.
+  values: {}
+
+# ---- Integrations ----------------------------------------------------------------------------
+jira:
+  # JIRA_BASE_URL. The credentials (JIRA_EMAIL, JIRA_API_TOKEN) come from the secrets above.
+  baseUrl: ""
+  # DOCOPS_FORGE_APP_ID: the Jira Forge app's ARI (app.id in its manifest.yml), for example
+  # "ari:cloud:ecosystem::app/<uuid>". Empty: the API refuses Forge Invocation Tokens. Verifying
+  # them fetches Atlassian's keys from forge.cdn.prod.atlassian-dev.net: see egress.allowInternet.
+  forgeAppId: ""
+
+# Extra non-secret variables for every pod, for example DOCOPS_OIDC_AUDIENCE.
+extraConfig: {}
+
+# ---- Network ---------------------------------------------------------------------------------
+networkPolicy:
+  enabled: true
+  # Where cluster DNS runs, so that name resolution keeps working under default-deny egress.
+  dns:
+    namespaceSelector:
+      kubernetes.io/metadata.name: kube-system
+    podSelector:
+      k8s-app: kube-dns
+    # More DNS peers, for example NodeLocal DNSCache on the node's link-local address:
+    #   - ipBlock: { cidr: 169.254.20.10/32 }
+    extraPeers: []
+
+egress:
+  # false (default): the pods may only talk to DNS and the database, plus allowedCidrs.
+  # true: also allow the public internet (GitHub, Jira Cloud). Private ranges stay blocked.
+  allowInternet: false
+  internetExceptCidrs:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - 169.254.0.0/16
+  # Extra destinations, on any port, for example a GitHub Enterprise Server or Jira Data Center
+  # inside your network: ["10.30.0.0/24"].
+  allowedCidrs: []
+
+# ---- API -------------------------------------------------------------------------------------
+api:
+  # More than one replica needs shared blob storage (objectStorage.type s3, or a ReadWriteMany
+  # objectStorage.filesystem.existingClaim) and, for signatures that verify on every replica, the
+  # shared secrets above. Migrations are safe to run from several pods at once (they take a database lock).
+  replicaCount: 1
+  # With a ReadWriteOnce blob claim and one replica, a rolling update cannot attach the claim to the
+  # new pod while the old one still holds it. Use:
+  #   --set api.strategy.type=Recreate --set api.strategy.rollingUpdate=null
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  # Needs shared blob storage (objectStorage.type s3, or a ReadWriteMany claim), like any second replica.
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: null
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  service:
+    type: ClusterIP
+    port: 8787
+    annotations: {}
+  # The first start applies migrations, so allow it up to 2 minutes before liveness takes over.
+  startupProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    periodSeconds: 3
+    failureThreshold: 40
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+  extraEnv: []
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+
+# ---- Workers ---------------------------------------------------------------------------------
+# One Deployment per group, all from the same image. A group consumes the queues listed in
+# `queues` (comma separated); empty means every queue. Queues today: tracker.link, tracker.mirror,
+# tracker.sync, notify.webhooks, content.index.
+worker:
+  enabled: true
+  # Defaults for every group; a group can override replicaCount, resources, concurrency and queues.
+  replicaCount: 2
+  # WORKER_CONCURRENCY: a positive integer (the worker refuses to start otherwise; the render fails first).
+  concurrency: 4
+  pollMs: 1000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: null
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  groups:
+    - name: all
+      queues: ""
+  # Example: split the tracker queues (Jira and GitHub sync) from the rest so a burst of webhooks
+  # cannot starve indexing, and scale them independently:
+  #   groups:
+  #     - name: tracker
+  #       queues: "tracker.link,tracker.mirror,tracker.sync"
+  #       replicaCount: 3
+  #     - name: content
+  #       queues: "content.index,notify.webhooks"
+  #       concurrency: 2
+  terminationGracePeriodSeconds: 30
+  extraEnv: []
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+
+# ---- Ingress ---------------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: docops.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  # tls:
+  #   - secretName: docops-tls
+  #     hosts: [docops.example.com]
+  tls: []
+
+# ---- Service account and pod security --------------------------------------------------------
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# The image runs as uid/gid 10001 (see deploy/docker/Dockerfile).
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+# Writable paths are /tmp, DOCOPS_DATA_DIR and (with filesystem blob storage) DOCOPS_BLOB_DIR, mounted as volumes.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL

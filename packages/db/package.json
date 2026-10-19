@@ -1,0 +1,15 @@
+{
+  "name": "@docops/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@docops/core": "*",
+    "@electric-sql/pglite": "^0.5.10",
+    "@electric-sql/pglite-pgvector": "^0.0.11",
+    "pg": "^8.23.1"
+  }
+}

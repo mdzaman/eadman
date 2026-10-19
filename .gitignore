@@ -1,0 +1,10 @@
+node_modules/
+.docops/
+dist/
+*.sarif
+docops-junit.xml
+gl-code-quality-report.json
+.DS_Store
+*.log
+.env
+.env.*

@@ -1,0 +1,17 @@
+{
+  "name": "@docops/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@docops/core": "*",
+    "@docops/markdown": "*",
+    "mdast-util-to-string": "^4.0.0",
+    "unist-util-visit": "^5.1.0",
+    "yaml": "^2.9.1"
+  }
+}

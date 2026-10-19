@@ -1,0 +1,69 @@
+# .gitlab-ci.yml: DocOps on GitLab CI/CD.
+# Merge requests: gates in the Code Quality widget and JUnit tab, plus a review-app preview.
+# Default branch: publish to dev. Release tags: publish to prod.
+stages: [check, preview, publish]
+
+variables:
+  DOCOPS_API_URL: https://api.docops.example
+  GIT_DEPTH: "0"                       # full history for --base comparisons
+
+.docops:
+  image: node:24-alpine
+  id_tokens:
+    DOCOPS_ID_TOKEN:                   # GitLab OIDC token, exchanged for a 15-minute DocOps token
+      aud: https://api.docops.example
+  before_script:
+    - apk add --no-cache git
+    - npm install --global @docops/cli@1
+
+docs:check:
+  extends: .docops
+  stage: check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - >
+      docops check
+      --base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+      --report codequality=gl-code-quality-report.json
+      --report junit=docops-junit.xml
+      --report markdown=docops-summary.md
+      --upload
+  artifacts:
+    when: always
+    reports:
+      codequality: gl-code-quality-report.json
+      junit: docops-junit.xml
+    paths: [docops-summary.md]
+
+docs:preview:
+  extends: .docops
+  stage: preview
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - docops build --preview --out public
+    - docops publish --dir public --kind preview --dotenv preview.env   # writes DOCOPS_PREVIEW_URL=...
+  artifacts:
+    reports:
+      dotenv: preview.env
+  environment:
+    name: review/$CI_COMMIT_REF_SLUG
+    url: $DOCOPS_PREVIEW_URL
+    auto_stop_in: 1 week
+
+docs:publish:
+  extends: .docops
+  stage: publish
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      variables: { DOCOPS_ENV: dev, DOCOPS_VERSION: latest }
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+      variables: { DOCOPS_ENV: prod, DOCOPS_VERSION: $CI_COMMIT_TAG }
+  script:
+    - docops build --out public --version-name "$DOCOPS_VERSION"
+    - docops publish --dir public --env "$DOCOPS_ENV"
+  environment:
+    name: docs/$DOCOPS_ENV
+    deployment_tier: production

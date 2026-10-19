@@ -1,0 +1,39 @@
+# Applied by BuildKit to `docker build -f deploy/docker/Dockerfile .` (a <Dockerfile>.dockerignore next to the
+# Dockerfile takes precedence over a .dockerignore at the context root). The build context is the repository
+# root; deploy/docker/.dockerignore is an identical copy for tools that look for that name. Keep them in sync.
+
+# Dependencies are installed inside the image
+**/node_modules
+
+# Version control, CI and editor state
+.git
+.github
+.gitignore
+**/.DS_Store
+
+# Local data, secrets and reports: never bake these into an image
+.docops
+**/.docops
+.env
+.env.*
+**/*.log
+**/*.sarif
+docops-junit.xml
+gl-code-quality-report.json
+
+# Build output and coverage
+dist
+**/dist
+coverage
+**/coverage
+
+# Not needed at runtime
+docs
+examples
+scripts
+deploy
+docops.yaml
+apps/jira-forge
+**/test
+**/*.test.ts
+**/tsconfig*.json

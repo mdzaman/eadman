@@ -1,0 +1,110 @@
+# yaml-language-server: $schema=../../packages/config/schema/docops.schema.json
+# Example DocOps configuration for a service repository ("Acme Payments").
+version: 1
+
+project:
+  id: payments
+  name: Acme Payments
+  description: Card and bank payments API for Acme merchants.
+  repository: acme/payments
+
+docs:
+  root: docs
+  include: ["**/*.md", "**/*.mdx"]
+  exclude: ["**/_drafts/**"]
+  snippets: _snippets
+  defaultPageType: guide
+  defaultAudience: public
+
+# Reference sources: DocOps extracts entities from these and requires the docs to cover them.
+sources:
+  - id: payments-api
+    type: openapi
+    path: api/openapi.yaml
+    reference:
+      outDir: reference/payments-api
+      title: Payments API reference
+  - id: payments-config
+    type: jsonschema
+    path: config/schema.json
+    visibility: internal          # operator-facing settings, documented in runbooks
+
+versions:
+  strategy: git-tags
+  tagPattern: "v*"
+  label: "{major}.{minor}"
+  keep: 5
+
+audiences:
+  - id: public
+  - id: internal
+    description: Operators and support engineers
+
+checks:
+  failOn: error
+  links:
+    level: block
+    external: { enabled: false }
+  coverage:
+    level: warn
+    minimum: 80
+    measure: l2
+    kinds: [api.operation]
+    newEntities: warn
+  schemaChange:
+    level: block
+    waiverLabel: docs-not-needed
+  drift:
+    level: block                  # removed or renamed entities, stale literal values
+    changedEntityLevel: warn      # entity changed, page not touched
+    mentions: contextual
+    ai: { enabled: false, level: warn }
+  docTests: { level: off }
+  style:
+    level: warn
+    rules:
+      style/inclusive-language: block
+  a11y: { level: warn, standard: wcag22aa }
+  frontmatter:
+    level: block
+    required: [title, owners]
+  freshness:
+    level: warn
+    defaultSlaDays: 180
+    byPageType: { runbook: 90 }
+  secrets: { level: block }
+  includes: { level: block }
+
+ownership:
+  codeowners: auto
+  rules:
+    - pattern: "runbooks/**"
+      owners: ["@acme/payments-sre"]
+      slaDays: 90
+
+integrations:
+  jira:
+    site: acme.atlassian.net
+    projects: [PAY]
+    linkFrom: [pr_title, branch_name, commit_message, frontmatter]
+    docsRequired:
+      field: customfield_10071
+      issueTypes: [Story, Bug]
+
+publish:
+  baseUrl: https://docs.acme.example/payments
+  environments:
+    - { name: dev, branch: main }
+    - { name: staging }
+    - { name: prod, tags: "v*", requireApproval: true }
+  preview: { enabled: true, ttlDays: 7 }
+
+site:
+  title: Acme Payments Docs
+  editUrl: https://github.com/acme/payments/edit/main/{path}
+  theme: { primaryColor: "#0B5FFF" }
+
+variables:
+  productName: Acme Payments
+  apiBaseUrl: https://api.acme.example
+  supportEmail: payments-support@acme.example

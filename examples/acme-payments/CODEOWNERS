@@ -1,0 +1,5 @@
+# Docs ownership is part of the content graph (freshness reminders, review routing).
+/docs/                @acme/payments-docs
+/docs/runbooks/       @acme/payments-sre
+/api/openapi.yaml     @acme/payments-api
+/docops.yaml          @acme/platform

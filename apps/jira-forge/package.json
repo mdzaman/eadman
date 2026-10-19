@@ -1,0 +1,30 @@
+{
+  "name": "@docops/jira-forge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DocOps for Jira Cloud: a Forge app (UI Kit + Forge Remote). Deliberately NOT part of the root npm workspaces: it is installed and deployed with the Forge CLI.",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "lint": "forge lint",
+    "deploy": "forge deploy -e development",
+    "tunnel": "forge tunnel",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@forge/api": "^8.3.0",
+    "@forge/bridge": "^7.2.0",
+    "@forge/kvs": "^2.1.0",
+    "@forge/react": "^12.3.1",
+    "@forge/resolver": "^2.0.1",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "^18.3.31",
+    "typescript": "^5.9.3"
+  }
+}

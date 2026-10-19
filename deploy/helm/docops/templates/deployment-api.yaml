@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "docops.apiName" . }}
+  labels:
+    {{- include "docops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  {{- if not .Values.api.autoscaling.enabled }}
+  replicas: {{ .Values.api.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "docops.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  strategy:
+    {{- toYaml .Values.api.strategy | nindent 4 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.api.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "docops.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+        {{- with .Values.api.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "docops.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: api
+          image: {{ include "docops.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8787
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "docops.fullname" . }}
+          env:
+            - name: PORT
+              value: "8787"
+            {{- include "docops.databaseEnv" . | nindent 12 }}
+            {{- include "docops.secretEnv" (dict "secret" (include "docops.secretName" .) "keys" (list "DOCOPS_TOKEN_SIGNING_SECRET" "DOCOPS_PREVIEW_SECRET" "DOCOPS_SIGNING_KEY_PEM" "DOCOPS_BOOTSTRAP_TOKEN" "GITHUB_WEBHOOK_SECRET" "JIRA_WEBHOOK_SECRET" "JIRA_EMAIL" "JIRA_API_TOKEN")) | trim | nindent 12 }}
+            {{- if eq .Values.objectStorage.type "s3" }}
+            {{- include "docops.s3Env" . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.api.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.api.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.api.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.api.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: data
+              mountPath: /var/lib/docops/data
+            {{- if eq .Values.objectStorage.type "filesystem" }}
+            - name: blobs
+              mountPath: /var/lib/docops/blobs
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
+        {{- if eq .Values.objectStorage.type "filesystem" }}
+        - name: blobs
+          {{- if .Values.objectStorage.filesystem.existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.objectStorage.filesystem.existingClaim }}
+          {{- else }}
+          emptyDir:
+            sizeLimit: {{ .Values.objectStorage.filesystem.emptyDirSizeLimit }}
+          {{- end }}
+        {{- end }}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,48 @@
+# CI for the DocOps monorepo. It dogfoods the product: the design docs in docs/ are a
+# DocOps space, so `docops check` gates them (links, anchors, includes, 100% coverage of
+# our own OpenAPI operations and webhooks) on every PR.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      # Pin third-party actions to a full commit SHA in production workflows.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (TypeScript 7)
+        run: npm run typecheck
+      - name: Unit, integration and end-to-end tests
+        run: npm test
+      - name: Docs are in sync with code (DDL, examples, action.yml)
+        run: npm run sync -- --check
+      - name: Dogfood quality gates on our own docs
+        run: npm run docops -- check --base origin/${{ github.base_ref || 'main' }} --report sarif=docops.sarif --report junit=docops-junit.xml
+      - name: AI evaluation harness (hard gates, mock provider)
+        run: npm run eval
+      - name: Bundle CLI and GitHub Action
+        run: npm run build
+      - name: Render the design docs as a site
+        run: npm run docs:build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docops-reports
+          path: |
+            docops.sarif
+            docops-junit.xml
+            .docops/site

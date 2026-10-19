@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en" data-base-path="/" data-version="latest">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self' https:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Acme Payments · Acme Payments Docs</title>
+<meta name="description" content="Acme Payments lets you accept card and bank payments and refund them.">
+<link rel="canonical" href="https://docs.acme.example/payments/">
+<meta name="generator" content="DocOps renderer 0.1.0">
+<link rel="stylesheet" href="/assets/docops.css">
+<link rel="stylesheet" href="/assets/theme.css">
+<script src="/assets/docops.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#content">Skip to content</a>
+<header class="site-header"><a class="site-title" href="/">Acme Payments Docs</a><nav class="version-switcher" aria-label="Versions"><span class="version-label" aria-hidden="true">Version</span><ul><li><a href="/" aria-current="page">latest</a></li></ul></nav><form class="search" role="search" method="get"><label for="docops-search-input" class="search-label">Search</label><input id="docops-search-input" type="search" name="q" autocomplete="off" spellcheck="false" aria-describedby="docops-search-status" aria-controls="docops-search-results"><p id="docops-search-status" class="search-status" role="status" aria-live="polite"></p><ul id="docops-search-results" class="search-results" aria-label="Search results" hidden></ul></form></header>
+<div class="layout">
+<nav class="sidebar" aria-label="Documentation"><details class="nav-details" open><summary>Menu</summary><ul><li><a href="/" aria-current="page">Acme Payments</a></li><li><span class="nav-group">Concepts</span><ul><li><a href="/concepts/idempotency/">Idempotent requests</a></li></ul></li><li><span class="nav-group">Guides</span><ul><li><a href="/guides/payments/">Accept a payment</a></li><li><a href="/guides/refunds/">Refund a payment</a></li></ul></li><li><span class="nav-group">Runbooks</span><ul><li><a href="/runbooks/payments-outage/">Runbook: payment processor timeouts</a></li></ul></li><li><span class="nav-group">Payments API reference</span><ul><li><a href="/reference/payments-api/">Overview</a></li><li><a href="/reference/payments-api/tags/payments/">Payments</a><ul><li><a href="/reference/payments-api/operations/listPayments/"><span class="method method-get">GET</span> List payments</a></li><li><a href="/reference/payments-api/operations/createPayment/"><span class="method method-post">POST</span> Create a payment</a></li><li><a href="/reference/payments-api/operations/getPayment/"><span class="method method-get">GET</span> Retrieve a payment</a></li><li><a href="/reference/payments-api/operations/capturePayment/"><span class="method method-post">POST</span> Capture an authorized payment</a></li></ul></li><li><a href="/reference/payments-api/tags/refunds/">Refunds</a><ul><li><a href="/reference/payments-api/operations/createRefund/"><span class="method method-post">POST</span> Refund a payment</a></li></ul></li></ul></li></ul></details></nav>
+<main id="content" tabindex="-1">
+<article class="doc"><h1 id="acme-payments">Acme Payments</h1>
+<p>Acme Payments lets you accept card and bank payments and refund them.</p>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: Task, Guide"><table>
+<thead>
+<tr>
+<th scope="col">Task</th>
+<th scope="col">Guide</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Take a payment</td>
+<td><a href="/guides/payments/">Accept a payment</a></td>
+</tr>
+<tr>
+<td>Give money back</td>
+<td><a href="/guides/refunds/">Refund a payment</a></td>
+</tr>
+<tr>
+<td>Retry safely</td>
+<td><a href="/concepts/idempotency/">Idempotent requests</a></td>
+</tr>
+<tr>
+<td>Find past payments</td>
+<td><code>GET /v1/payments</code> returns payments, newest first</td>
+</tr>
+</tbody>
+</table></div>
+<p>All requests go to <code>https://api.acme.example</code> and authenticate with a secret API key sent as a bearer token.</p>
+<aside class="callout callout-note" role="note"><p class="callout-title">Note</p><p>Need help? Email payments-support@acme.example.</p></aside></article>
+<footer class="page-footer"><dl class="page-meta"><div><dt>Last reviewed</dt><dd><time datetime="2026-09-15">2026-09-15</time></dd></div><div><dt>Owners</dt><dd>@acme/payments-docs</dd></div></dl><p class="edit-link"><a href="https://github.com/acme/payments/edit/main/docs/index.md" rel="noopener noreferrer">Edit this page</a></p></footer>
+</main>
+</div>
+<footer class="site-footer"><p>Acme Payments Docs · latest · Built with DocOps</p><p id="docops-shortcuts" class="shortcut-pref" hidden>Press <kbd>/</kbd> to search. <button type="button" class="link-button">Turn off the / shortcut</button></p></footer>
+</body>
+</html>

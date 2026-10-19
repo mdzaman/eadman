@@ -1,0 +1,375 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.docops.example/docops.schema.json",
+  "title": "DocOps configuration (docops.yaml)",
+  "description": "Configuration for one documentation space. Lives at the repository root next to the code it documents.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "project"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": {
+      "description": "Configuration format version.",
+      "const": 1
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "description": "Stable space key. Used in URLs, entity keys and API calls. Never change it after publishing.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 500 },
+        "repository": {
+          "description": "owner/name. Inferred from the git remote when omitted.",
+          "type": "string",
+          "pattern": "^[^/\\s]+/[^\\s]+$"
+        }
+      }
+    },
+    "docs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "root": { "type": "string", "default": "docs", "description": "Docs directory relative to the repository root." },
+        "include": { "type": "array", "items": { "type": "string" }, "default": ["**/*.md", "**/*.mdx"] },
+        "exclude": { "type": "array", "items": { "type": "string" }, "default": ["**/node_modules/**", "**/_drafts/**"] },
+        "snippets": { "type": "string", "default": "_snippets", "description": "Reusable fragments (relative to root). Snippets are not pages." },
+        "defaultPageType": { "$ref": "#/$defs/pageType", "default": "guide" },
+        "defaultAudience": { "type": "string", "default": "internal" }
+      }
+    },
+    "sources": {
+      "description": "Reference sources whose entities docs must cover (API specs, config schemas, code, infrastructure).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": { "enum": ["single", "git-tags", "branches"], "default": "single" },
+        "tagPattern": { "type": "string", "default": "v*" },
+        "label": { "type": "string", "default": "{major}.{minor}", "description": "How a tag becomes a version name." },
+        "branches": { "type": "array", "items": { "type": "string" } },
+        "keep": { "type": "integer", "minimum": 1, "maximum": 50, "default": 5 },
+        "default": { "type": "string", "default": "latest" }
+      }
+    },
+    "audiences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "description": { "type": "string" },
+          "include": { "type": "array", "items": { "type": "string" } },
+          "exclude": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "checks": { "$ref": "#/$defs/checks" },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "codeowners": {
+          "description": "auto (default): use CODEOWNERS, .github/CODEOWNERS or docs/CODEOWNERS when present; a path selects a specific file; false disables.",
+          "anyOf": [{ "type": "boolean" }, { "type": "string" }],
+          "default": "auto"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["pattern", "owners"],
+            "properties": {
+              "pattern": { "type": "string" },
+              "owners": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+              "slaDays": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "integrations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "jira": { "$ref": "#/$defs/jira" }
+      }
+    },
+    "publish": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "baseUrl": { "type": "string", "format": "uri" },
+        "environments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              "branch": { "type": "string", "description": "Auto-promote builds of this branch." },
+              "tags": { "type": "string", "description": "Auto-promote builds of tags matching this glob." },
+              "requireApproval": { "type": "boolean", "default": false },
+              "url": { "type": "string", "format": "uri" }
+            }
+          }
+        },
+        "preview": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "ttlDays": { "type": "integer", "minimum": 1, "maximum": 90, "default": 7 }
+          }
+        }
+      }
+    },
+    "site": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "logo": { "type": "string" },
+        "lang": { "type": "string", "default": "en" },
+        "editUrl": { "type": "string", "description": "Template with {path}, e.g. https://github.com/acme/payments/edit/main/{path}" },
+        "theme": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "primaryColor": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            "fontFamily": { "type": "string" }
+          }
+        }
+      }
+    },
+    "variables": {
+      "description": "Reusable values substituted as {{ name }} in pages.",
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "boolean"] }
+    },
+    "ai": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false, "description": "Also requires the tenant-level opt-in." },
+        "provider": { "enum": ["anthropic", "bedrock", "vertex", "azure-openai", "openai-compatible"] },
+        "model": { "type": "string" },
+        "logging": { "enum": ["minimal", "full"], "default": "minimal" }
+      }
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["package"],
+        "properties": {
+          "package": { "type": "string" },
+          "options": { "type": "object" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "level": {
+      "description": "off: disabled. warn: report, do not fail. block: fail the gate.",
+      "enum": ["off", "warn", "block"]
+    },
+    "pageType": {
+      "enum": ["guide", "how_to", "tutorial", "concept", "reference", "runbook", "adr", "postmortem", "release_notes", "onboarding", "other"]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "path"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$", "description": "Becomes part of every entity key." },
+        "type": {
+          "enum": ["openapi", "asyncapi", "graphql", "protobuf", "jsonschema", "typescript", "python", "java", "go", "csharp", "rust", "terraform", "cloudformation", "helm", "kubernetes", "sql", "custom"]
+        },
+        "path": { "type": "string" },
+        "visibility": { "enum": ["public", "internal"], "default": "public" },
+        "reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "outDir": { "type": "string", "description": "Route prefix for generated reference pages." },
+            "title": { "type": "string" }
+          }
+        },
+        "options": { "type": "object", "description": "Extractor-specific options." }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "failOn": { "enum": ["error", "warning", "never"], "default": "error" },
+        "links": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/level", "default": "block" },
+            "external": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean", "default": false },
+                "level": { "$ref": "#/$defs/level", "default": "warn" },
+                "timeoutMs": { "type": "integer", "minimum": 100, "default": 5000 },
+                "concurrency": { "type": "integer", "minimum": 1, "maximum": 64, "default": 8 },
+                "ignore": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/level", "default": "warn" },
+            "minimum": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+            "measure": { "enum": ["l1", "l2"], "default": "l2" },
+            "kinds": { "type": "array", "items": { "type": "string" }, "default": ["api.operation"] },
+            "includeDeprecated": { "type": "boolean", "default": false },
+            "newEntities": { "$ref": "#/$defs/level", "default": "warn", "description": "Level for public entities added in this change without docs." }
+          }
+        },
+        "schemaChange": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/level", "default": "block" },
+            "waiverLabel": { "type": "string", "default": "docs-not-needed" }
+          }
+        },
+        "drift": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/level", "default": "block" },
+            "changedEntityLevel": { "$ref": "#/$defs/level", "default": "warn" },
+            "mentions": { "enum": ["contextual", "strict", "off"], "default": "contextual" },
+            "ai": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean", "default": false },
+                "level": { "$ref": "#/$defs/level", "default": "warn" }
+              }
+            }
+          }
+        },
+        "docTests": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/level", "default": "off" },
+            "timeoutMs": { "type": "integer", "minimum": 1000, "default": 30000 },
+            "languages": { "type": "array", "items": { "type": "string" }, "default": ["bash", "sh", "js"] }
+          }
+        },
+        "style": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/level", "default": "warn" },
+            "rules": { "type": "object", "additionalProperties": { "$ref": "#/$defs/level" } },
+            "vale": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "oneOf": [{ "type": "boolean" }, { "const": "auto" }], "default": "auto" },
+                "config": { "type": "string", "default": ".vale.ini" }
+              }
+            }
+          }
+        },
+        "a11y": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/level", "default": "warn" },
+            "standard": { "enum": ["wcag21aa", "wcag22aa"], "default": "wcag22aa" }
+          }
+        },
+        "frontmatter": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/level", "default": "block" },
+            "required": { "type": "array", "items": { "type": "string" }, "default": ["title"] }
+          }
+        },
+        "freshness": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/level", "default": "warn" },
+            "defaultSlaDays": { "type": "integer", "minimum": 1, "default": 180 },
+            "byPageType": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 } }
+          }
+        },
+        "ownership": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/level", "default": "off" }
+          }
+        },
+        "secrets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/level", "default": "block" }
+          }
+        },
+        "includes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/level", "default": "block" }
+          }
+        }
+      }
+    },
+    "jira": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["site"],
+      "properties": {
+        "site": { "type": "string", "description": "acme.atlassian.net or a Data Center base URL." },
+        "deployment": { "enum": ["cloud", "data-center"], "default": "cloud" },
+        "projects": { "type": "array", "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" } },
+        "keyPattern": { "type": "string", "default": "\\b[A-Z][A-Z0-9_]+-\\d+\\b" },
+        "linkFrom": {
+          "type": "array",
+          "items": { "enum": ["pr_title", "pr_body", "branch_name", "commit_message", "frontmatter"] },
+          "default": ["pr_title", "branch_name", "commit_message", "frontmatter"]
+        },
+        "docsRequired": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "field": { "type": "string", "description": "Custom field id holding Yes/No, e.g. customfield_10071." },
+            "label": { "type": "string", "description": "Alternative: issues with this label require docs." },
+            "issueTypes": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+/* DocOps theme tokens (generated from site.primaryColor). */
+:root {
+  --docops-primary: #0b5fff;
+  --docops-on-primary: #ffffff;
+  --docops-link: #0b5fff;
+  --docops-focus: #0b5fff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --docops-link: #3077ff;
+    --docops-focus: #3077ff;
+  }
+}

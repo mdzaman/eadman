@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" data-base-path="/" data-version="latest">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self' https:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Payments API reference · Acme Payments Docs</title>
+<meta name="description" content="Accept card and bank payments and issue refunds.">
+<link rel="canonical" href="https://docs.acme.example/payments/reference/payments-api/">
+<meta name="generator" content="DocOps renderer 0.1.0">
+<link rel="stylesheet" href="/assets/docops.css">
+<link rel="stylesheet" href="/assets/theme.css">
+<script src="/assets/docops.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#content">Skip to content</a>
+<header class="site-header"><a class="site-title" href="/">Acme Payments Docs</a><nav class="version-switcher" aria-label="Versions"><span class="version-label" aria-hidden="true">Version</span><ul><li><a href="/" aria-current="page">latest</a></li></ul></nav><form class="search" role="search" method="get"><label for="docops-search-input" class="search-label">Search</label><input id="docops-search-input" type="search" name="q" autocomplete="off" spellcheck="false" aria-describedby="docops-search-status" aria-controls="docops-search-results"><p id="docops-search-status" class="search-status" role="status" aria-live="polite"></p><ul id="docops-search-results" class="search-results" aria-label="Search results" hidden></ul></form></header>
+<div class="layout">
+<nav class="sidebar" aria-label="Documentation"><details class="nav-details" open><summary>Menu</summary><ul><li><a href="/">Acme Payments</a></li><li><span class="nav-group">Concepts</span><ul><li><a href="/concepts/idempotency/">Idempotent requests</a></li></ul></li><li><span class="nav-group">Guides</span><ul><li><a href="/guides/payments/">Accept a payment</a></li><li><a href="/guides/refunds/">Refund a payment</a></li></ul></li><li><span class="nav-group">Runbooks</span><ul><li><a href="/runbooks/payments-outage/">Runbook: payment processor timeouts</a></li></ul></li><li><span class="nav-group">Payments API reference</span><ul><li><a href="/reference/payments-api/" aria-current="page">Overview</a></li><li><a href="/reference/payments-api/tags/payments/">Payments</a><ul><li><a href="/reference/payments-api/operations/listPayments/"><span class="method method-get">GET</span> List payments</a></li><li><a href="/reference/payments-api/operations/createPayment/"><span class="method method-post">POST</span> Create a payment</a></li><li><a href="/reference/payments-api/operations/getPayment/"><span class="method method-get">GET</span> Retrieve a payment</a></li><li><a href="/reference/payments-api/operations/capturePayment/"><span class="method method-post">POST</span> Capture an authorized payment</a></li></ul></li><li><a href="/reference/payments-api/tags/refunds/">Refunds</a><ul><li><a href="/reference/payments-api/operations/createRefund/"><span class="method method-post">POST</span> Refund a payment</a></li></ul></li></ul></li></ul></details></nav>
+<main id="content" tabindex="-1">
+<nav class="toc" aria-label="On this page"><p class="toc-title" aria-hidden="true">On this page</p><ul><li><a href="#servers">Servers</a></li><li><a href="#authentication">Authentication</a></li><li><a href="#tag-payments">Payments</a></li><li><a href="#tag-refunds">Refunds</a></li></ul></nav>
+<article class="doc api-reference api-page-index">
+<h1>Acme Payments API</h1>
+<p class="api-meta">Version <code>2.4.0</code> · OpenAPI 3.1.0</p>
+<p>Accept card and bank payments and issue refunds.</p>
+<h2 id="servers">Servers</h2>
+<ul class="server-list"><li><code>https://api.acme.example</code> — Production</li><li><code>https://sandbox.api.acme.example</code> — Sandbox</li></ul>
+<h2 id="authentication">Authentication</h2>
+<div class="table-wrap" role="region" tabindex="0" aria-labelledby="table-1"><table class="schema-table"><caption id="table-1">Security schemes</caption><thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Details</th><th scope="col">Description</th></tr></thead><tbody><tr><th scope="row"><code>bearerAuth</code></th><td>http</td><td>HTTP bearer token</td><td>Secret API key, sent as a bearer token.</td></tr></tbody></table></div>
+<h2 id="tag-payments">Payments</h2>
+<p>Create, list and capture payments.</p>
+<ul class="operation-list"><li><a href="/reference/payments-api/operations/listPayments/"><span class="method method-get">GET</span> <code class="api-path">/v1/payments</code> <span class="api-summary">List payments</span></a></li><li><a href="/reference/payments-api/operations/createPayment/"><span class="method method-post">POST</span> <code class="api-path">/v1/payments</code> <span class="api-summary">Create a payment</span></a></li><li><a href="/reference/payments-api/operations/getPayment/"><span class="method method-get">GET</span> <code class="api-path">/v1/payments/{payment_id}</code> <span class="api-summary">Retrieve a payment</span></a></li><li><a href="/reference/payments-api/operations/capturePayment/"><span class="method method-post">POST</span> <code class="api-path">/v1/payments/{payment_id}/capture</code> <span class="api-summary">Capture an authorized payment</span></a></li></ul>
+<h2 id="tag-refunds">Refunds</h2>
+<p>Refund captured payments in full or in part.</p>
+<ul class="operation-list"><li><a href="/reference/payments-api/operations/createRefund/"><span class="method method-post">POST</span> <code class="api-path">/v1/refunds</code> <span class="api-summary">Refund a payment</span></a></li></ul>
+</article>
+<footer class="page-footer"><p class="generated-note">Generated from the <code>payments-api</code> OpenAPI document (version 2.4.0).</p></footer>
+</main>
+</div>
+<footer class="site-footer"><p>Acme Payments Docs · latest · Built with DocOps</p><p id="docops-shortcuts" class="shortcut-pref" hidden>Press <kbd>/</kbd> to search. <button type="button" class="link-button">Turn off the / shortcut</button></p></footer>
+</body>
+</html>

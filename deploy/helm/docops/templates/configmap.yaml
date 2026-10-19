@@ -1,0 +1,35 @@
+{{- /*
+Non-secret settings shared by the API and the workers. Values that are empty are left out on purpose:
+an empty variable is not the same as an unset one (an empty WORKER_QUEUES means "no queues").
+*/ -}}
+{{- include "docops.validate" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "docops.fullname" . }}
+  labels:
+    {{- include "docops.labels" . | nindent 4 }}
+data:
+  DOCOPS_CELL: {{ .Values.cell | quote }}
+  DOCOPS_PUBLIC_URL: {{ include "docops.publicUrl" . | quote }}
+  {{- with .Values.jira.baseUrl }}
+  JIRA_BASE_URL: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.jira.forgeAppId }}
+  # Read by the API: the audience of the Jira Forge app's invocation tokens.
+  DOCOPS_FORGE_APP_ID: {{ . | quote }}
+  {{- end }}
+  {{- if eq .Values.objectStorage.type "s3" }}
+  # Blob storage, read by the API (the access key comes from a Secret).
+  DOCOPS_S3_BUCKET: {{ .Values.objectStorage.s3.bucket | quote }}
+  {{- with .Values.objectStorage.s3.region }}
+  DOCOPS_S3_REGION: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.objectStorage.s3.endpoint }}
+  DOCOPS_S3_ENDPOINT: {{ . | quote }}
+  {{- end }}
+  DOCOPS_S3_FORCE_PATH_STYLE: {{ .Values.objectStorage.s3.forcePathStyle | toString | quote }}
+  {{- end }}
+  {{- range $key, $value := .Values.extraConfig }}
+  {{ $key }}: {{ $value | toString | quote }}
+  {{- end }}

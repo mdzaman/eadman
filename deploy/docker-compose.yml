@@ -1,0 +1,194 @@
+# DocOps evaluation stack: Postgres (with pgvector), the API and a worker.
+#
+# There is no default admin token. Generate one before the first start; the API creates a tenant
+# and an admin token from it (DOCOPS_BOOTSTRAP_TOKEN) the first time it runs:
+#
+#   export DOCOPS_BOOTSTRAP_TOKEN="dop_$(openssl rand -hex 20)"
+#
+# Compose also reads deploy/.env (git-ignored), so you can keep it there instead of exporting it:
+# every `docker compose` command that parses this file needs the variable, `down` and `logs` included.
+#
+#   docker compose -f deploy/docker-compose.yml up --build
+#   curl http://localhost:8787/healthz
+#   Authorization: Bearer $DOCOPS_BOOTSTRAP_TOKEN         <- the header to send to the API (an admin token)
+#
+# Optional, for builds that survive a restart: a build-signing key. Without one the API generates an
+# ephemeral key on every start (and logs a warning), so a build finalized before a restart cannot be
+# promoted after it. Create one and keep it with the token:
+#
+#   export DOCOPS_SIGNING_KEY_PEM="$(openssl genpkey -algorithm ed25519)"
+#
+# or, in deploy/.env (a quoted multi-line value):
+#
+#   printf 'DOCOPS_SIGNING_KEY_PEM="%s"\n' "$(openssl genpkey -algorithm ed25519)" >> deploy/.env
+#
+# Optional: keep blobs in S3-compatible object storage instead of the docops-blobs volume, as several
+# API replicas would need. The "s3" profile adds a SeaweedFS service that creates the bucket when it
+# starts (upstream MinIO images are no longer published). It takes both of these lines in deploy/.env:
+#
+#   COMPOSE_PROFILES=s3
+#   DOCOPS_S3_BUCKET=docops-blobs
+#
+# For another S3-compatible service, or AWS, leave the profile out and set DOCOPS_S3_BUCKET with
+# DOCOPS_S3_ENDPOINT, DOCOPS_S3_REGION, DOCOPS_S3_FORCE_PATH_STYLE, DOCOPS_S3_ACCESS_KEY_ID and
+# DOCOPS_S3_SECRET_ACCESS_KEY.
+#
+# This file is for evaluation and local development: the database password and the S3 access key
+# below are well-known defaults, which is acceptable only because those ports are not published.
+# Production deployments use the Helm chart (deploy/helm/docops).
+#
+# Optional overrides go in deploy/.env.docops (git-ignored; one VAR=value per line, not quoted):
+#   GITHUB_WEBHOOK_SECRET, JIRA_WEBHOOK_SECRET, JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN,
+#   WORKER_QUEUES (comma list; leave it out to consume every queue), WORKER_CONCURRENCY (a positive
+#   integer), ...
+# Do not put an empty value there: an empty WORKER_QUEUES means "no queues".
+name: docops
+
+x-docops-build: &docops-build
+  context: ..
+  dockerfile: deploy/docker/Dockerfile
+
+# Settings both the API and the worker read.
+x-docops-env: &docops-env
+  NODE_ENV: production
+  DATABASE_URL: postgres://docops:${POSTGRES_PASSWORD:-docops}@postgres:5432/docops
+  DOCOPS_CELL: ${DOCOPS_CELL:-local-1}
+  DOCOPS_PUBLIC_URL: ${DOCOPS_PUBLIC_URL:-http://localhost:8787}
+
+# The access key the s3 service accepts and the API signs with. The host variables are named
+# DOCOPS_S3_* so that an AWS_ACCESS_KEY_ID from your shell (perhaps a real AWS key) never ends up here.
+x-s3-credentials: &s3-credentials
+  AWS_ACCESS_KEY_ID: ${DOCOPS_S3_ACCESS_KEY_ID:-docops}
+  AWS_SECRET_ACCESS_KEY: ${DOCOPS_S3_SECRET_ACCESS_KEY:-docops-evaluation-secret}
+
+x-docops-hardening: &docops-hardening
+  init: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: docops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docops}
+      POSTGRES_DB: docops
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docops -d docops"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    # Not published on the host. To use psql from the host, add: ports: ["127.0.0.1:5432:5432"]
+
+  api:
+    <<: *docops-hardening
+    build: *docops-build
+    image: docops/server:${DOCOPS_VERSION:-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # Only with the s3 profile; without it Compose ignores this dependency.
+      s3:
+        condition: service_healthy
+        required: false
+    env_file:
+      - path: .env.docops
+        required: false
+    environment:
+      <<: [*docops-env, *s3-credentials]
+      PORT: "8787"
+      DOCOPS_DATA_DIR: /var/lib/docops/data
+      DOCOPS_BLOB_DIR: /var/lib/docops/blobs
+      # Blob storage: an empty DOCOPS_S3_BUCKET keeps blobs in the docops-blobs volume. See the header
+      # for the s3 profile; the defaults below point at its service.
+      DOCOPS_S3_BUCKET: ${DOCOPS_S3_BUCKET:-}
+      DOCOPS_S3_ENDPOINT: ${DOCOPS_S3_ENDPOINT:-http://s3:8333}
+      DOCOPS_S3_REGION: ${DOCOPS_S3_REGION:-us-east-1}
+      DOCOPS_S3_FORCE_PATH_STYLE: ${DOCOPS_S3_FORCE_PATH_STYLE:-true}
+      # Creates a tenant and an admin token on first start. Required, with no default: see the header
+      # for how to generate it. It must look like dop_ + at least 20 letters or digits, otherwise
+      # the API logs an error and skips the bootstrap.
+      DOCOPS_BOOTSTRAP_TOKEN: "${DOCOPS_BOOTSTRAP_TOKEN:?set DOCOPS_BOOTSTRAP_TOKEN, e.g. dop_ plus 40 random hex characters}"
+      DOCOPS_BOOTSTRAP_TENANT: ${DOCOPS_BOOTSTRAP_TENANT:-acme}
+      # No defaults on purpose for the three secrets below: a well-known value would let anyone who
+      # has this file forge tokens or signatures. Empty means "generate an ephemeral one on every
+      # start" (the API logs that), so tokens, preview links and builds finalized before a restart
+      # do not survive it. For stable ones add them to deploy/.env, for example:
+      #   DOCOPS_TOKEN_SIGNING_SECRET=<output of: openssl rand -hex 32>
+      DOCOPS_TOKEN_SIGNING_SECRET: ${DOCOPS_TOKEN_SIGNING_SECRET:-}
+      DOCOPS_PREVIEW_SECRET: ${DOCOPS_PREVIEW_SECRET:-}
+      DOCOPS_SIGNING_KEY_PEM: ${DOCOPS_SIGNING_KEY_PEM:-}
+    ports:
+      - "127.0.0.1:${DOCOPS_API_PORT:-8787}:8787"
+    volumes:
+      - docops-blobs:/var/lib/docops/blobs
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
+
+  worker:
+    <<: *docops-hardening
+    build: *docops-build
+    image: docops/server:${DOCOPS_VERSION:-local}
+    command: ["node", "apps/worker/src/main.ts"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # Both processes apply pending migrations when they start, behind a database lock, so the order
+      # is not a safety matter; starting the worker after the API just keeps the first start quiet.
+      api:
+        condition: service_healthy
+    env_file:
+      - path: .env.docops
+        required: false
+    environment:
+      <<: *docops-env
+    # The worker serves no HTTP, so the image's default (no healthcheck) applies.
+
+  # S3-compatible object storage for the API's blobs, only with the s3 profile (see the header).
+  # SeaweedFS (Apache-2.0) in its single-container mode: `weed mini` runs a master, a volume server, a
+  # filer and the S3 gateway, and creates the S3_BUCKET bucket once they are up. Requests must be
+  # signed with the access key above (an admin identity). The master, volume and filer HTTP ports have
+  # no authentication: never publish them; only the API talks to port 8333 inside this network.
+  s3:
+    profiles: [s3]
+    image: chrislusf/seaweedfs:4.48
+    restart: unless-stopped
+    # The image's seaweed user. Starting as it skips the entrypoint's root-only step (chown /data and
+    # drop privileges), which a new named volume does not need: it takes the image's ownership of /data.
+    user: "1000:1000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # WebDAV, the admin UI and the anonymous usage statistics that mini sends by default are turned off.
+    command: ["mini", "-dir=/data", "-webdav=false", "-admin.ui=false", "-master.telemetry=false"]
+    environment:
+      <<: *s3-credentials
+      S3_BUCKET: ${DOCOPS_S3_BUCKET:-docops-blobs}
+    volumes:
+      - s3-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+volumes:
+  postgres-data:
+  docops-blobs:
+  s3-data:

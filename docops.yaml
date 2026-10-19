@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=packages/config/schema/docops.schema.json
+# DocOps dogfoods itself: these design docs are a DocOps space, and CI runs
+# `docops check` on them. Our own API spec is a reference source, so every
+# operation and webhook in api/openapi.yaml must be documented (coverage = 100%).
+version: 1
+
+project:
+  id: docops
+  name: DocOps design package
+  description: Product, architecture and API design for the DocOps docs-as-code platform.
+
+docs:
+  root: docs
+  defaultPageType: concept
+  defaultAudience: internal
+
+sources:
+  - id: docops-api
+    type: openapi
+    path: api/openapi.yaml
+    reference:
+      outDir: reference/api
+      title: DocOps API reference
+
+checks:
+  failOn: error
+  links:
+    level: block
+  coverage:
+    level: block
+    minimum: 100
+    measure: l2
+    kinds: [api.operation, api.webhook]
+  schemaChange: { level: block }
+  drift: { level: block }
+  frontmatter:
+    level: block
+    required: [title]
+  includes: { level: block }
+  secrets: { level: block }
+  style: { level: warn }
+  a11y: { level: warn }
+  freshness: { level: warn, defaultSlaDays: 180 }
+
+site:
+  title: DocOps design docs
+  theme: { primaryColor: "#0B5FFF" }

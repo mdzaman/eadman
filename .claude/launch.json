@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "docops-api",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "DOCOPS_BOOTSTRAP_TOKEN=$(cat .docops/dev-token) exec node --experimental-strip-types --disable-warning=ExperimentalWarning apps/api/src/main.ts"
+      ],
+      "port": 8787
+    }
+  ]
+}

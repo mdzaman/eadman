@@ -1,0 +1,100 @@
+app:
+  id: ari:cloud:ecosystem::app/00000000-0000-0000-0000-000000000000
+  runtime:
+    name: nodejs24.x
+
+modules:
+  jira:issuePanel:
+    - key: docops-docs-panel
+      resource: issue-panel
+      resolver: { function: resolver }
+      render: native
+      title: Docs
+      icon: https://static.docops.example/forge/docs-16.svg
+  jira:issueContext:
+    - key: docops-docs-glance
+      resource: issue-context
+      resolver: { function: resolver }
+      render: native
+      title: Docs status
+      label: Docs
+  jira:projectPage:
+    - key: docops-readiness
+      resource: readiness
+      resolver: { function: resolver }
+      render: native
+      title: Docs readiness
+  jira:adminPage:
+    - key: docops-admin
+      resource: admin
+      resolver: { function: resolver }
+      render: native
+      title: DocOps
+      useAsConfig: true
+  jira:issueAction:
+    - key: docops-link-doc
+      resource: link-dialog
+      resolver: { function: resolver }
+      render: native
+      title: Link documentation
+  jira:customField:
+    - key: docs-status
+      name: Docs status
+      description: Documentation status computed by DocOps (read-only).
+      type: string
+      readOnly: true
+  jira:workflowValidator:
+    - key: docs-merged-validator
+      name: Docs merged (DocOps)
+      description: Blocks the transition when docs are required but not merged or published.
+      expression: >-
+        issue.properties['docops.docs'] == null
+        || issue.properties['docops.docs'].required != 'yes'
+        || ['merged', 'published'].includes(issue.properties['docops.docs'].status)
+      errorMessage: "Docs required: link a merged doc change, or set Docs required = No with a reason."
+  trigger:
+    - key: docops-issue-events
+      endpoint: docops-events
+      events:
+        - avi:jira:created:issue
+        - avi:jira:updated:issue
+        - avi:jira:deleted:issue
+        - avi:jira:released:version
+      filter:
+        ignoreSelf: true          # our own property/field writes do not loop back
+  function:
+    - key: resolver
+      handler: index.handler
+  endpoint:
+    - key: docops-events
+      remote: docops
+      route:
+        path: /hooks/jira
+      auth:
+        appSystemToken:
+          enabled: true           # lets the worker write properties, links and field values
+
+remotes:
+  - key: docops
+    baseUrl:
+      default: https://api.docops.example
+      EU: https://api.eu.docops.example
+    operations: [compute, fetch]
+
+resources:
+  - { key: issue-panel, path: src/frontend/issue-panel.tsx }
+  - { key: issue-context, path: src/frontend/issue-context.tsx }
+  - { key: readiness, path: src/frontend/readiness.tsx }
+  - { key: admin, path: src/frontend/admin.tsx }
+  - { key: link-dialog, path: src/frontend/link-dialog.tsx }
+
+permissions:
+  scopes:
+    - read:jira-work              # read issues, versions, projects
+    - write:jira-work             # issue properties, remote links, doc sub-tasks
+    - read:app-system-token
+    - storage:app
+  external:
+    fetch:
+      backend:
+        - remote: docops
