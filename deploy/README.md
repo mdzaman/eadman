@@ -1,6 +1,6 @@
-# Deploying DocOps
+# Deploying EADMan
 
-Everything needed to run the DocOps services (the API and the queue workers) outside a developer's laptop: a container image, a Docker Compose stack for evaluation, and a Helm chart for Kubernetes.
+Everything needed to run the EADMan services (the API and the queue workers) outside a developer's laptop: a container image, a Docker Compose stack for evaluation, and a Helm chart for Kubernetes.
 
 ```text
 deploy/
@@ -90,8 +90,8 @@ curl http://localhost:8787/healthz
   - **Access key:** `DOCOPS_S3_ACCESS_KEY_ID` and `DOCOPS_S3_SECRET_ACCESS_KEY` on the host (defaults `docops` and `docops-evaluation-secret`, well-known like the database password and acceptable for the same reason). Compose hands them to both services as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`; the host names differ so that an AWS key in your shell never reaches the containers.
   - **Safety:** `weed mini` also runs a master, a volume server and a filer whose HTTP APIs have no authentication. They are reachable only inside the Compose network: never publish them. The service runs as uid 1000 with no capabilities and `no-new-privileges`, with WebDAV, the admin UI and SeaweedFS's default anonymous usage statistics turned off. Its root filesystem is not read-only, because that was not tested.
   - **Another service, or AWS:** leave the profile out and set `DOCOPS_S3_BUCKET`, `DOCOPS_S3_ENDPOINT` (for AWS, `https://s3.<region>.amazonaws.com`), `DOCOPS_S3_REGION`, `DOCOPS_S3_FORCE_PATH_STYLE` (`false` for AWS) and the access key. With `DOCOPS_S3_BUCKET` set but neither the profile nor an endpoint, the API points at `http://s3:8333`, which does not exist, and uploads fail.
-- The API publishes `127.0.0.1:8787` only. The DocOps services run with a read-only root filesystem, no capabilities and `no-new-privileges`; `/tmp` is a tmpfs and blobs live in a named volume (or in the `s3` service's).
-- The Compose database user is a superuser. DocOps still switches to the `docops_app` role inside every tenant transaction, so row-level security applies, but do not use this stack to judge production database privileges.
+- The API publishes `127.0.0.1:8787` only. The EADMan services run with a read-only root filesystem, no capabilities and `no-new-privileges`; `/tmp` is a tmpfs and blobs live in a named volume (or in the `s3` service's).
+- The Compose database user is a superuser. EADMan still switches to the `docops_app` role inside every tenant transaction, so row-level security applies, but do not use this stack to judge production database privileges.
 
 ## Kubernetes with Helm
 
@@ -160,7 +160,7 @@ The install prints what is still missing (`NOTES.txt`). To check a configuration
 | Worker `Deployment`s, one per entry of `worker.groups` | Same image, `node apps/worker/src/main.ts`. Each group sets `queues`, and may override `replicaCount`, `concurrency` and `resources`. The commented example in `values.yaml` splits the tracker queues from content indexing |
 | `HorizontalPodAutoscaler`s | Off by default. API and each worker group, on CPU (and memory if set). API autoscaling needs shared blob storage (see Storage). For scaling workers on queue lag use KEDA instead (docs/02 §3.3) |
 | `PodDisruptionBudget`s | Only when more than one replica is possible, since `minAvailable: 1` on a single replica would block node drains |
-| `NetworkPolicy`s | Default-deny **egress** for every DocOps pod, and with S3 a second policy that lets the API pods reach the bucket's endpoint; see below |
+| `NetworkPolicy`s | Default-deny **egress** for every EADMan pod, and with S3 a second policy that lets the API pods reach the bucket's endpoint; see below |
 | `ConfigMap`, `Secret`, `ServiceAccount` | The ConfigMap carries non-secret settings (a checksum annotation rolls the pods when it changes); the ServiceAccount mounts no API token |
 
 Pods run as user 10001 with `runAsNonRoot`, `RuntimeDefault` seccomp, no privilege escalation, all capabilities dropped and a **read-only root filesystem**; the writable paths are `/tmp`, the data directory and, with blobs on the filesystem, the blob directory.

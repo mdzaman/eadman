@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=../../packages/config/schema/docops.schema.json
-# Example DocOps configuration for a service repository ("Acme Payments").
+# Example EADMan configuration for a service repository ("Acme Payments").
 version: 1
 
 project:
@@ -16,7 +16,7 @@ docs:
   defaultPageType: guide
   defaultAudience: public
 
-# Reference sources: DocOps extracts entities from these and requires the docs to cover them.
+# Reference sources: EADMan extracts entities from these and requires the docs to cover them.
 sources:
   - id: payments-api
     type: openapi

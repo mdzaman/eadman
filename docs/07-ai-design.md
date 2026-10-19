@@ -5,9 +5,9 @@ reviewed: 2026-10-18
 status: proposed
 ---
 
-# DocOps: AI Design
+# EADMan: AI Design
 
-AI in DocOps is **grounded, cited, permission-aware, human-approved and optional**. It sits on top of a deterministic engine that is already useful without it. This document specifies the RAG pipeline, the drift-detection algorithm, the prompt templates, the LLM gateway, the evaluation harness, and the guardrails against hallucination and data leakage.
+AI in EADMan is **grounded, cited, permission-aware, human-approved and optional**. It sits on top of a deterministic engine that is already useful without it. This document specifies the RAG pipeline, the drift-detection algorithm, the prompt templates, the LLM gateway, the evaluation harness, and the guardrails against hallucination and data leakage.
 
 ## 1. Principles
 
@@ -64,7 +64,7 @@ flowchart LR
 - **Rerank** with a cross-encoder (BGE-reranker-v2-m3 self-hosted, or a provider reranker) to the top 8, under a context budget of about 6k tokens.
 - **Version pinning.** The query's version (from the portal selector or the "in v2.4" phrasing) is a hard filter. Without one, the filter is `latest` and the answer says which version it used.
 - **Freshness signal.** Chunks from pages flagged `stale` are down-weighted (× 0.7), and any citation of one carries a "may be outdated" badge.
-- **Sufficiency gate.** If the best rerank score is below τ (calibrated per tenant on the eval set, default 0.35), DocOps returns **"This isn't documented"** with no LLM call. That is cheaper and can't hallucinate. The query is logged as a gap candidate.
+- **Sufficiency gate.** If the best rerank score is below τ (calibrated per tenant on the eval set, default 0.35), EADMan returns **"This isn't documented"** with no LLM call. That is cheaper and can't hallucinate. The query is logged as a gap candidate.
 
 ### 2.4 Generation with citations
 
@@ -91,7 +91,7 @@ Each answer is recorded in `ai_answers` with the question (ciphertext under the 
 
 ## 3. Drift-detection algorithm
 
-Drift is a documentation statement that is no longer true for the code at `head`. DocOps detects it in four stages. Stages 1–3 are deterministic; stage 4 is AI and opt-in.
+Drift is a documentation statement that is no longer true for the code at `head`. EADMan detects it in four stages. Stages 1–3 are deterministic; stage 4 is AI and opt-in.
 
 ```mermaid
 flowchart TB
@@ -287,7 +287,7 @@ that are not supported by the provided change. If the right fix is unclear, retu
 "needs_human": true with a one-sentence reason instead of guessing.
 ```
 
-Schema: `{ replacement_lines: string[], needs_human: boolean, reason: string }`. The diff is computed by DocOps, never by the model.
+Schema: `{ replacement_lines: string[], needs_human: boolean, reason: string }`. The diff is computed by EADMan, never by the model.
 
 ### 4.4 Other templates
 
@@ -321,7 +321,7 @@ Responsibilities: tenant model allowlist, region pinning, secret and PII redacti
 |---|---|---|---|---|
 | Ask-the-docs | `claude-opus-5-5` | `medium` | Native citations (document blocks) | Streamed. Citations are incompatible with structured outputs, so the answer path uses citations only. |
 | Drift verification | `claude-opus-5-5` | `high` | Structured outputs (`output_config.format`, JSON schema) | Correctness-sensitive |
-| Patch suggestion | `claude-opus-5-5` | `medium` | Structured outputs | The diff is computed by DocOps |
+| Patch suggestion | `claude-opus-5-5` | `medium` | Structured outputs | The diff is computed by EADMan |
 | Drafts and release notes | `claude-opus-5-5` | `high` | Markdown | Long output is streamed |
 
 - **Implementation** uses the official `@anthropic-ai/sdk`. Structured outputs go through `client.messages.parse()` with `jsonSchemaOutputFormat()`; citations come from `document` blocks with `citations: { enabled: true }`.
@@ -396,7 +396,7 @@ The **judge** is calibrated against a human-labeled subset; Cohen's κ must be �
 | Logs as a leak path | Prompts and answers are encrypted with the tenant DEK; retention is configurable; logs never hold raw content |
 | Training on customer data | Contractual and technical: provider settings disallow training; per-tenant opt-in; documented in the DPA |
 
-Instructions addressed to AI agents embedded in documentation pages are now common in public docs: our October 2026 market scan found several. DocOps treats them like any other content. They can be quoted, but they are never followed.
+Instructions addressed to AI agents embedded in documentation pages are now common in public docs: our October 2026 market scan found several. EADMan treats them like any other content. They can be quoted, but they are never followed.
 
 ### 7.3 Governance and cost controls
 

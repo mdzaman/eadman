@@ -5,7 +5,7 @@ reviewed: 2026-10-18
 status: proposed
 ---
 
-# DocOps: MVP Code Scaffold
+# EADMan: MVP Code Scaffold
 
 This repository contains a working TypeScript monorepo that implements the MVP spine of the design. Every claim in this document is backed by an automated test (§5).
 
@@ -68,9 +68,9 @@ npm run build
 
 ```text
 .
-├── docs/                      # The design package: a DocOps space, gated in CI (dogfooding)
+├── docs/                      # The design package: a EADMan space, gated in CI (dogfooding)
 ├── api/openapi.yaml           # OpenAPI 3.1 contract (63 operations, 12 webhooks)
-├── docops.yaml                # This repository's own DocOps configuration
+├── docops.yaml                # This repository's own EADMan configuration
 ├── examples/
 │   ├── acme-payments/         # Sample service repo: docs, OpenAPI, config schema, CODEOWNERS
 │   └── ci/                    # GitHub Actions, GitLab CI and Jenkins pipelines (embedded in docs/05)

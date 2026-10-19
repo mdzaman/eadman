@@ -1,4 +1,4 @@
-# .github/workflows/docs.yml: DocOps on GitHub Actions.
+# .github/workflows/docs.yml: EADMan on GitHub Actions.
 # PRs: quality gates, a sticky PR comment, inline annotations and a preview.
 # main: publish to dev. Release tags: promote the same build to prod (environment-protected).
 name: docs
@@ -13,7 +13,7 @@ permissions:
   contents: read
   pull-requests: write   # sticky comment and suggestion comments
   checks: write          # check run with annotations
-  id-token: write        # OIDC token exchange: no DocOps secret stored in GitHub
+  id-token: write        # OIDC token exchange: no EADMan secret stored in GitHub
 
 concurrency:
   group: docs-${{ github.workflow }}-${{ github.ref }}

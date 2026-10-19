@@ -1,13 +1,13 @@
 # @docops/ai
 
-The governed AI layer of DocOps: an LLM gateway with pluggable providers, permission-aware
+The governed AI layer of EADMan: an LLM gateway with pluggable providers, permission-aware
 retrieval with verified citations (Ask-the-docs), AI drift verification and patch
 suggestions, versioned prompt templates, and an evaluation harness with hard gates.
 The design is [docs/07-ai-design.md](../../docs/07-ai-design.md); the threats it answers are
 T14, T21 and T22 in [docs/08-security-compliance.md](../../docs/08-security-compliance.md).
 
 Every output is a suggestion with provenance. Nothing here commits, publishes or calls a
-tool: the model only ever receives sources as data and returns text or JSON, which DocOps
+tool: the model only ever receives sources as data and returns text or JSON, which EADMan
 verifies before anyone sees it.
 
 ```
@@ -71,7 +71,7 @@ const answer = await service.ask({ question: "How do I issue a partial refund?",
    removed, and `not_documented` when no cited content remains. An exact `NOT_DOCUMENTED`
    reply also maps to `not_documented`.
 6. **Live ACL re-check** of cited pages, right before rendering.
-7. **Render and filter.** DocOps places the `[S1]` markers itself, one citation per distinct
+7. **Render and filter.** EADMan places the `[S1]` markers itself, one citation per distinct
    (chunk, quote) pair, and drops markers that the model wrote. `filterAnswerMarkdown` then
    removes images, raw HTML and link reference definitions. A link renders only if it is
    `https` and either its host is in `linkAllowlist` or the exact URL appears in a cited
@@ -116,7 +116,7 @@ The line is `startLine` plus the quote's line offset within the passage. Everyth
 returned in `dropped`, with a reason.
 
 `suggestPatch()` asks `drift-patch@v2` for `replacement_lines` covering the editable range only,
-and DocOps computes the unified diff. A patch fails validation if it does any of the following:
+and EADMan computes the unified diff. A patch fails validation if it does any of the following:
 
 - repeats a neighbouring line, which means it edits outside the range;
 - changes more than `maxChangedLineRatio` (30%) of a range longer than 3 lines;
@@ -169,7 +169,7 @@ with tags `answerable`, `unanswerable`, `permission-trap` and `injection`.
 - **JSON Schemas for Claude.** SDK 0.135's `jsonSchemaOutputFormat` transforms the schema by
   default. It throws when a node has no `type`, so the docs/07 §4.2 enum fields carry an
   explicit `type: "string"`. It also moves `enum` into the field description, which means
-  enum values are validated by DocOps after parsing, not by constrained decoding.
+  enum values are validated by EADMan after parsing, not by constrained decoding.
 - **Fallback scope.** Server-side fallback is used on the citations path only. The structured
   path calls `messages.parse` without it, so a refusal there returns `refused`.
 - **Re-indexing.** To re-index a page with `InMemorySearchBackend`, call `removePage(path)` and

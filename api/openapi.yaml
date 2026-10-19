@@ -1,18 +1,21 @@
 openapi: 3.1.0
 info:
-  title: DocOps API
+  title: EADMan API
   version: 1.0.0
   summary: Content graph, quality gates, builds, Jira readiness and governed AI for docs-as-code.
   description: |
-    The DocOps REST API. Design rules (see docs/04-api-design.md):
+    The EADMan REST API. Design rules (see docs/04-api-design.md):
 
     * Resource-oriented URLs under `/v1`; additive changes only within a major version.
     * Tenant is derived from the credential; it never appears in the URL.
     * Cursor pagination (`cursor`, `limit`), `Idempotency-Key` on every POST that creates state.
     * Errors are RFC 9457 `application/problem+json`.
     * `x-docops-phase` marks the roadmap phase (mvp, v1, v2) of each operation.
+  license:
+    name: Apache 2.0
+    identifier: Apache-2.0
   contact:
-    name: DocOps API team
+    name: EADMan API team
     url: https://docs.docops.example/api
 servers:
   - url: https://api.docops.example
@@ -91,7 +94,7 @@ paths:
     post:
       tags: [Identity]
       operationId: exchangeOidcToken
-      summary: Exchange a CI OIDC token for a short-lived DocOps token (RFC 8693)
+      summary: Exchange a CI OIDC token for a short-lived EADMan token (RFC 8693)
       description: |
         Workload identity federation for CI. A GitHub Actions / GitLab / Azure Pipelines OIDC
         token is validated against the issuer's JWKS and the tenant's trust policy

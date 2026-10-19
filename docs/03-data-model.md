@@ -5,9 +5,9 @@ reviewed: 2026-10-18
 status: proposed
 ---
 
-# DocOps: Content Graph Data Model
+# EADMan: Content Graph Data Model
 
-The content graph is the core of DocOps. It connects **pages** to the **entities** they describe, to the **tickets** that required them, to the **pull requests and commits** that changed them, and to the **releases and deployments** that shipped them. This document has the ERDs, the source-of-truth classification of every table, the key queries, and the complete DDL.
+The content graph is the core of EADMan. It connects **pages** to the **entities** they describe, to the **tickets** that required them, to the **pull requests and commits** that changed them, and to the **releases and deployments** that shipped them. This document has the ERDs, the source-of-truth classification of every table, the key queries, and the complete DDL.
 
 The DDL in §7 is embedded verbatim from [`packages/db/migrations/0001_init.sql`](../packages/db/migrations/0001_init.sql). A test (`packages/db/test/docs-sync.test.ts`) fails if this document and the migration drift apart.
 
@@ -57,7 +57,7 @@ The principle *"nothing important lives only in a database"* is enforced per tab
 |---|---|---|
 | **D** (Derived) | Computed from Git (pages, config, sources, CODEOWNERS) and CI uploads | `docops reindex --space <key>` rebuilds it from Git at any time |
 | **M** (Mirrored) | Copied from a system of record (Git provider, tracker, IdP) | Resynced from the provider API; deleting it loses nothing |
-| **O** (Operational) | Facts that originate in DocOps (audit, check runs, AI suggestions, deployments, dismissals, role bindings) | Exported continuously (audit goes to WORM storage and the SIEM) and on demand (`POST /v1/exports`, JSONL with schemas) |
+| **O** (Operational) | Facts that originate in EADMan (audit, check runs, AI suggestions, deployments, dismissals, role bindings) | Exported continuously (audit goes to WORM storage and the SIEM) and on demand (`POST /v1/exports`, JSONL with schemas) |
 | **P** (Platform) | Routing and plumbing with no tenant content (outbox, queue, delivery ledger) | Ephemeral or replayable |
 
 | Table | Class | Purpose | Retention |

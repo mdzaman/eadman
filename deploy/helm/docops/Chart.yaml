@@ -1,6 +1,6 @@
 apiVersion: v2
 name: docops
-description: "DocOps, the docs-as-code platform: the API and the queue workers, ready for regulated and air-gapped clusters."
+description: "EADMan, the docs-as-code platform: the API and the queue workers, ready for regulated and air-gapped clusters."
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
@@ -12,6 +12,6 @@ keywords:
   - jira
   - air-gapped
 maintainers:
-  - name: DocOps platform team
+  - name: EADMan platform team
 annotations:
   category: Developer Tools

@@ -1,10 +1,21 @@
 {
   "name": "@docops/cli",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
-  "dependencies": { "@docops/core": "*", "@docops/config": "*", "@docops/markdown": "*", "@docops/extractors": "*", "@docops/engine": "*", "@docops/checks": "*", "@docops/renderer": "*", "@docops/git": "*", "@docops/jira": "*" }
+  "dependencies": {
+    "@docops/core": "*",
+    "@docops/config": "*",
+    "@docops/markdown": "*",
+    "@docops/extractors": "*",
+    "@docops/engine": "*",
+    "@docops/checks": "*",
+    "@docops/renderer": "*",
+    "@docops/git": "*",
+    "@docops/jira": "*"
+  }
 }

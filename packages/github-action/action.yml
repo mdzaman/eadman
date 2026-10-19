@@ -1,6 +1,6 @@
-name: DocOps
+name: EADMan
 description: Docs quality gates, drift detection, previews and publishing for docs-as-code.
-author: DocOps
+author: EADMan
 branding:
   icon: book-open
   color: blue
@@ -33,7 +33,7 @@ inputs:
     required: false
     default: "true"
   preview:
-    description: Build and upload a PR preview (requires the DocOps platform).
+    description: Build and upload a PR preview (requires the EADMan platform).
     required: false
     default: "false"
   sarif:
@@ -46,7 +46,7 @@ inputs:
     description: Version label for build/publish (defaults to config or "latest").
     required: false
   api-url:
-    description: DocOps API URL. Omit to run fully offline (deterministic gates only).
+    description: EADMan API URL. Omit to run fully offline (deterministic gates only).
     required: false
   github-token:
     description: Token used for PR comments and check annotations.

@@ -5,7 +5,7 @@ reviewed: 2026-10-18
 status: proposed
 ---
 
-# DocOps: CLI and CI Specification
+# EADMan: CLI and CI Specification
 
 The `docops` CLI is the platform's primary execution engine ([ADR-0010](adr/0010-compute-in-customer-ci.md)). It runs in the customer's CI, where the code and caches already are, and it runs the same packages as the hosted workers, so a finding looks the same wherever it was produced.
 
@@ -78,7 +78,7 @@ Global options: `-C, --cwd <dir>`, `-c, --config <file>` (default `docops.yaml`)
 
 ```text
 $ docops check --base main      # examples/acme-payments, branch feature/PAY-131-amount-cents
-DocOps 0.1.0 · payments · 5 pages · 46 entities · 33 references
+EADMan 0.1.0 · payments · 5 pages · 46 entities · 33 references
 Base main (88c7630) → feature/PAY-131-amount-cents: 2 added, 1 renamed, 2 modified
 
 ✖ schema/changed-without-docs  api/openapi.yaml:212
@@ -204,7 +204,7 @@ A complete example, which also serves as the fixture for the end-to-end tests:
 <!-- docops:include path="../examples/acme-payments/docops.yaml" lang="yaml" -->
 ```yaml
 # yaml-language-server: $schema=../../packages/config/schema/docops.schema.json
-# Example DocOps configuration for a service repository ("Acme Payments").
+# Example EADMan configuration for a service repository ("Acme Payments").
 version: 1
 
 project:
@@ -221,7 +221,7 @@ docs:
   defaultPageType: guide
   defaultAudience: public
 
-# Reference sources: DocOps extracts entities from these and requires the docs to cover them.
+# Reference sources: EADMan extracts entities from these and requires the docs to cover them.
 sources:
   - id: payments-api
     type: openapi
@@ -341,9 +341,9 @@ Entity references accept a full key (`api.operation:payments-api:POST /v1/refund
 
 <!-- docops:include path="../packages/github-action/action.yml" lang="yaml" -->
 ```yaml
-name: DocOps
+name: EADMan
 description: Docs quality gates, drift detection, previews and publishing for docs-as-code.
-author: DocOps
+author: EADMan
 branding:
   icon: book-open
   color: blue
@@ -376,7 +376,7 @@ inputs:
     required: false
     default: "true"
   preview:
-    description: Build and upload a PR preview (requires the DocOps platform).
+    description: Build and upload a PR preview (requires the EADMan platform).
     required: false
     default: "false"
   sarif:
@@ -389,7 +389,7 @@ inputs:
     description: Version label for build/publish (defaults to config or "latest").
     required: false
   api-url:
-    description: DocOps API URL. Omit to run fully offline (deterministic gates only).
+    description: EADMan API URL. Omit to run fully offline (deterministic gates only).
     required: false
   github-token:
     description: Token used for PR comments and check annotations.
@@ -422,7 +422,7 @@ runs:
 
 <!-- docops:include path="../examples/ci/github-actions.yml" lang="yaml" -->
 ````yaml
-# .github/workflows/docs.yml: DocOps on GitHub Actions.
+# .github/workflows/docs.yml: EADMan on GitHub Actions.
 # PRs: quality gates, a sticky PR comment, inline annotations and a preview.
 # main: publish to dev. Release tags: promote the same build to prod (environment-protected).
 name: docs
@@ -437,7 +437,7 @@ permissions:
   contents: read
   pull-requests: write   # sticky comment and suggestion comments
   checks: write          # check run with annotations
-  id-token: write        # OIDC token exchange: no DocOps secret stored in GitHub
+  id-token: write        # OIDC token exchange: no EADMan secret stored in GitHub
 
 concurrency:
   group: docs-${{ github.workflow }}-${{ github.ref }}
@@ -489,7 +489,7 @@ jobs:
 
 <!-- docops:include path="../examples/ci/gitlab-ci.yml" lang="yaml" -->
 ```yaml
-# .gitlab-ci.yml: DocOps on GitLab CI/CD.
+# .gitlab-ci.yml: EADMan on GitLab CI/CD.
 # Merge requests: gates in the Code Quality widget and JUnit tab, plus a review-app preview.
 # Default branch: publish to dev. Release tags: publish to prod.
 stages: [check, preview, publish]
@@ -501,7 +501,7 @@ variables:
 .docops:
   image: node:24-alpine
   id_tokens:
-    DOCOPS_ID_TOKEN:                   # GitLab OIDC token, exchanged for a 15-minute DocOps token
+    DOCOPS_ID_TOKEN:                   # GitLab OIDC token, exchanged for a 15-minute EADMan token
       aud: https://api.docops.example
   before_script:
     - apk add --no-cache git
@@ -565,7 +565,7 @@ docs:publish:
 
 <!-- docops:include path="../examples/ci/Jenkinsfile" lang="groovy" -->
 ```groovy
-// Jenkinsfile: DocOps in a declarative multibranch pipeline.
+// Jenkinsfile: EADMan in a declarative multibranch pipeline.
 // Requires: Docker Pipeline, Warnings Next Generation (SARIF parser), JUnit.
 pipeline {
   agent { docker { image 'node:24' } }
@@ -583,7 +583,7 @@ pipeline {
   }
 
   stages {
-    stage('Install DocOps CLI') {
+    stage('Install EADMan CLI') {
       steps { sh 'npm install --global @docops/cli@1' }
     }
 
@@ -601,7 +601,7 @@ pipeline {
       }
       post {
         always {
-          recordIssues(tools: [sarif(pattern: 'docops.sarif', id: 'docops', name: 'DocOps')])
+          recordIssues(tools: [sarif(pattern: 'docops.sarif', id: 'docops', name: 'EADMan')])
           junit(allowEmptyResults: true, testResults: 'docops-junit.xml')
         }
       }
@@ -635,7 +635,7 @@ pipeline {
 
 | CI | Integration |
 |---|---|
-| Azure Pipelines | `DocOps@1` task (wraps the CLI). OIDC through a workload-identity service connection; SARIF results appear in the Scans tab. |
+| Azure Pipelines | `EADMan@1` task (wraps the CLI). OIDC through a workload-identity service connection; SARIF results appear in the Scans tab. |
 | CircleCI | `docops/docops@1` orb with `check`, `build` and `publish` jobs. OIDC through `CIRCLE_OIDC_TOKEN_V2`. |
 | Bitbucket Pipelines | `docops/docops-pipe:1`. Reports post to Code Insights (annotations). |
 | Argo CD | Docs promotion follows the app: a `PostSync` hook Job runs `docops publish --build $DOCS_BUILD_ID --env prod`, with the build ID pinned in the same GitOps commit as the application image. |

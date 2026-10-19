@@ -10,7 +10,7 @@ owners: ["@docops/architecture"]
 
 ## Context
 
-DocOps has many surfaces that have to agree on the same schemas: the CLI, the GitHub Action, the API and workers, the Forge app, the Astro portal, the TipTap editor and the IDE extensions. The schemas include the `docops.yaml` config, the entity model, finding and rule contracts, the event payloads and the plugin SDK. Several of those surfaces only accept JavaScript or TypeScript: Forge functions, JavaScript GitHub Actions, VS Code extensions, Astro, TipTap and remark/rehype plugins.
+EADMan has many surfaces that have to agree on the same schemas: the CLI, the GitHub Action, the API and workers, the Forge app, the Astro portal, the TipTap editor and the IDE extensions. The schemas include the `docops.yaml` config, the entity model, finding and rule contracts, the event payloads and the plugin SDK. Several of those surfaces only accept JavaScript or TypeScript: Forge functions, JavaScript GitHub Actions, VS Code extensions, Astro, TipTap and remark/rehype plugins.
 
 ## Decision
 

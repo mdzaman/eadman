@@ -1,7 +1,7 @@
 ---
 id: drift-patch
 version: 2
-purpose: Minimal fix. Replace the flagged lines of a Markdown page so it matches the code again; DocOps computes the diff.
+purpose: Minimal fix. Replace the flagged lines of a Markdown page so it matches the code again; EADMan computes the diff.
 effort: medium
 output:
   type: object

@@ -5,7 +5,7 @@ reviewed: 2026-10-18
 status: proposed
 ---
 
-# DocOps: Product Requirements Document
+# EADMan: Product Requirements Document
 
 | | |
 |---|---|
@@ -17,7 +17,7 @@ status: proposed
 
 Documentation in engineering organizations decays silently. Code, APIs, config and infrastructure change many times a day, but the docs that describe them change only when someone remembers. No system knows which doc describes which part of the system, so drift can't be detected, coverage can't be measured, and nobody can show which documentation shipped with a release.
 
-DocOps makes documentation a **versioned, verifiable product of the delivery pipeline**. A page is linked to the entities it describes, the tickets that required it and the releases that shipped it. Every change is checked against those links before merge.
+EADMan makes documentation a **versioned, verifiable product of the delivery pipeline**. A page is linked to the entities it describes, the tickets that required it and the releases that shipped it. Every change is checked against those links before merge.
 
 ## 2. Assumptions
 
@@ -72,8 +72,8 @@ Priorities: **MVP** (weeks 1–12), **V1** (months 4–9), **V2** (months 10–1
 ### E1. Git-native content layer
 
 **US-GIT-01 (MVP): Connect a repository**
-*As Dana, I want to connect a GitHub repository with docs in `docs/`, so that DocOps indexes and builds them.*
-- Given the DocOps GitHub App is installed on `acme/payments`, when an admin selects the repository and confirms `docs/` as the docs root, then DocOps indexes all `*.md`/`*.mdx` files on the default branch within 5 minutes for repositories with ≤ 5k pages.
+*As Dana, I want to connect a GitHub repository with docs in `docs/`, so that EADMan indexes and builds them.*
+- Given the EADMan GitHub App is installed on `acme/payments`, when an admin selects the repository and confirms `docs/` as the docs root, then EADMan indexes all `*.md`/`*.mdx` files on the default branch within 5 minutes for repositories with ≤ 5k pages.
 - Given `docops.yaml` exists at the repository root, when it fails schema validation, then the connection is marked *Needs attention* and the errors show the file path, line and the JSON pointer of each error.
 - Given the repository is disconnected, then all derived data for it is deleted within 24 hours, and Git content is untouched.
 
@@ -130,7 +130,7 @@ Priorities: **MVP** (weeks 1–12), **V1** (months 4–9), **V2** (months 10–1
 
 **US-CI-07 (MVP): Publish and promote with the application**
 - Given `publish.environments` defines `dev`, `staging` and `prod`, when `docops publish --env staging --build <id>` runs from the application's deployment pipeline, then the exact immutable build (same content hash) is promoted without rebuilding, and `deployment.promoted` is emitted.
-- Promotion to `prod` requires that build's signature to verify and, if `requireApproval: true`, an approval recorded through the CI provider's environment protection or the DocOps UI.
+- Promotion to `prod` requires that build's signature to verify and, if `requireApproval: true`, an approval recorded through the CI provider's environment protection or the EADMan UI.
 
 **US-CI-08 (V1): Release notes**
 - Given tag range `v2.3.0..v2.4.0`, when `docops release-notes` runs, then notes are grouped by PR label (`feature`, `fix`, `breaking`, `deprecation`), linked to Jira keys, and written to `docs/release-notes/2.4.0.md` as a PR (never merged automatically).
@@ -140,9 +140,9 @@ Priorities: **MVP** (weeks 1–12), **V1** (months 4–9), **V2** (months 10–1
 
 **US-JIRA-01 (MVP): Bidirectional links**
 *As Rita, I want doc pages and Jira issues linked automatically.*
-- Given a PR whose title, branch or commits contain `PAY-123` and that modifies `docs/guides/refunds.md`, when the PR merges, then `PAY-123` shows the page in the DocOps issue panel and as a Jira remote link, and the page footer shows `PAY-123`.
+- Given a PR whose title, branch or commits contain `PAY-123` and that modifies `docs/guides/refunds.md`, when the PR merges, then `PAY-123` shows the page in the EADMan issue panel and as a Jira remote link, and the page footer shows `PAY-123`.
 - Given a page's frontmatter has `tickets: [PAY-123]`, then the same link exists even without a PR reference.
-- Links created from the Jira panel are stored in Jira (as issue properties and remote links) and indexed by DocOps. No link exists only in the DocOps database.
+- Links created from the Jira panel are stored in Jira (as issue properties and remote links) and indexed by EADMan. No link exists only in the EADMan database.
 
 **US-JIRA-02 (MVP): Docs status in Jira**
 - Each linked issue has a read-only custom field **Docs status** with one of `Not required`, `Missing`, `In review`, `Merged`, `Published` or `Stale`. The field is JQL-searchable and updates within 60 s of the triggering event.

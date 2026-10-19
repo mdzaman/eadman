@@ -5,7 +5,7 @@ reviewed: 2026-10-18
 status: proposed
 ---
 
-# DocOps: API Design
+# EADMan: API Design
 
 The canonical contract is [`api/openapi.yaml`](../api/openapi.yaml) (OpenAPI 3.1, linted with Redocly's recommended ruleset). This document explains the design rules, lists every operation, and catalogs the outbound webhook events, which are defined in the same file under the OpenAPI 3.1 `webhooks` object.
 
@@ -33,7 +33,7 @@ The canonical contract is [`api/openapi.yaml`](../api/openapi.yaml) (OpenAPI 3.1
 | Caller | Mechanism | Notes |
 |---|---|---|
 | Humans (web app, IDE) | OIDC or SAML SSO establishes a session; the browser holds an HttpOnly cookie and API calls use a short-lived access JWT | MFA is enforced by the IdP |
-| CI pipelines | **Workload identity federation.** `POST /v1/auth/oidc-exchange` (RFC 8693) swaps the CI provider's OIDC token for a 15-minute DocOps token | Trust policies pin immutable claims: GitHub `repository_id` and `repository_owner_id` (immutable `sub` claims are rolling out for new repositories), plus `ref` and `environment`. No long-lived secrets live in CI. |
+| CI pipelines | **Workload identity federation.** `POST /v1/auth/oidc-exchange` (RFC 8693) swaps the CI provider's OIDC token for a 15-minute EADMan token | Trust policies pin immutable claims: GitHub `repository_id` and `repository_owner_id` (immutable `sub` claims are rolling out for new repositories), plus `ref` and `environment`. No long-lived secrets live in CI. |
 | Scripts and integrations | API tokens `dop_…` (SHA-256 hashed at rest, shown once, prefix kept for identification, expiry ≤ 365 days) | Scoped; can be bound to a service account |
 | Jira Forge app | Forge Remote sends a **Forge Invocation Token** (FIT) as `Authorization: Bearer` | Verified against Atlassian's JWKS with `iss = forge/invocation-token` and `aud =` the app ARI; `app.installationId` maps to the tenant through `tenant_routes` |
 | Git provider webhooks | HMAC: GitHub `X-Hub-Signature-256`, Jira `X-Hub-Signature`, GitLab `X-Gitlab-Token` | Constant-time compare; deliveries deduplicated by delivery ID |
@@ -76,7 +76,7 @@ Generated from the spec: 63 operations, 47 of them in the MVP. The scaffold in `
 | Operation | operationId | Phase | Summary |
 |---|---|---|---|
 | `GET /v1/me` | `getMe` | MVP | Current principal, tenant and effective scopes |
-| `POST /v1/auth/oidc-exchange` | `exchangeOidcToken` | MVP | Exchange a CI OIDC token for a short-lived DocOps token (RFC 8693) |
+| `POST /v1/auth/oidc-exchange` | `exchangeOidcToken` | MVP | Exchange a CI OIDC token for a short-lived EADMan token (RFC 8693) |
 | `GET /v1/api-tokens` | `listApiTokens` | MVP | List API tokens (metadata only) |
 | `POST /v1/api-tokens` | `createApiToken` | MVP | Create an API token (secret returned once) |
 | `DELETE /v1/api-tokens/{tokenId}` | `revokeApiToken` | MVP | Revoke an API token |

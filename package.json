@@ -1,8 +1,9 @@
 {
   "name": "docops-monorepo",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "private": true,
-  "description": "DocOps: docs-as-code platform where documentation never drifts from the code.",
+  "description": "EADMan: docs-as-code platform where documentation never drifts from the code.",
   "type": "module",
   "engines": {
     "node": ">=22.12"

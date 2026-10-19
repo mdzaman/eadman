@@ -5,7 +5,7 @@ reviewed: 2026-10-18
 status: proposed
 ---
 
-# DocOps: Security and Compliance Design
+# EADMan: Security and Compliance Design
 
 This document covers the threat model (STRIDE), the RBAC matrix and the audit schema, with compliance mappings for SOC 2, ISO 27001, GDPR and HIPAA. Several mechanisms are verified by tests in the MVP scaffold, and each section says which.
 
@@ -36,11 +36,11 @@ flowchart LR
   subgraph custci["Customer-trusted: customer CI"]
     cli["docops CLI"]
   end
-  subgraph edge["DocOps edge"]
+  subgraph edge["EADMan edge"]
     cdn["CDN + edge auth"]
     gw["API gateway / WAF"]
   end
-  subgraph app["DocOps app plane (cell)"]
+  subgraph app["EADMan app plane (cell)"]
     api["API + connectors"]
     w["Workers"]
     ai["AI service + LLM gateway"]
@@ -107,7 +107,7 @@ Likelihood and impact are rated H, M or L. Residual risk is the risk after mitig
 | T30 | E | Sandbox | Container or VM escape | L / H | MicroVM isolation; seccomp; non-root; read-only root filesystem; no host mounts; dedicated node pools; kernel patch SLAs | L | Third-party pen test |
 | T31 | E | Forge app | Over-privileged Atlassian scopes | L / M | Minimal scopes; migration to granular scopes; Marketplace security review | L | Manifest review |
 | T32 | E | Git tokens | GitHub App tokens misused or overscoped | L / H | Fine-grained App permissions (contents:read, pull_requests:write, checks:write, metadata:read); user-to-server tokens for editor commits; installation tokens minted per job (≤ 1 h) and never persisted | L | Permission manifest tests |
-| T33 | I/E | TB7 Forge | Confused deputy: a user calls a Forge resolver with another issue or project key. The app calls DocOps as itself, so it could return linked pages, PRs or readiness for issues the user cannot browse, or write on the user's behalf | M / M | The issue and project come from the trusted Forge context. A key from the payload is honoured only after a check made *as the user* (fetching the issue, `BROWSE_PROJECTS`). Writes need the user's own `CREATE_ISSUES`, `LINK_ISSUES` or `ADMINISTER` permission. Readiness rows and doc-task targets are limited to issues a JQL search *as the user* returns, so issue security levels apply. Every payload is validated | L | `apps/jira-forge/test/validation.test.ts`, `resolvers.test.ts` (DocOps is never called after a denial) |
+| T33 | I/E | TB7 Forge | Confused deputy: a user calls a Forge resolver with another issue or project key. The app calls EADMan as itself, so it could return linked pages, PRs or readiness for issues the user cannot browse, or write on the user's behalf | M / M | The issue and project come from the trusted Forge context. A key from the payload is honoured only after a check made *as the user* (fetching the issue, `BROWSE_PROJECTS`). Writes need the user's own `CREATE_ISSUES`, `LINK_ISSUES` or `ADMINISTER` permission. Readiness rows and doc-task targets are limited to issues a JQL search *as the user* returns, so issue security levels apply. Every payload is validated | L | `apps/jira-forge/test/validation.test.ts`, `resolvers.test.ts` (EADMan is never called after a denial) |
 
 ## 3. RBAC matrix
 
@@ -146,7 +146,7 @@ Legend: ✓ allowed · — denied · own = only for the principal's own tokens.
 
 Design notes:
 
-- **Approval and merge stay with the Git provider.** Branch protection and CODEOWNERS decide who can merge. DocOps mirrors those decisions and doesn't duplicate them, so there is one source of truth for review policy.
+- **Approval and merge stay with the Git provider.** Branch protection and CODEOWNERS decide who can merge. EADMan mirrors those decisions and doesn't duplicate them, so there is one source of truth for review policy.
 - **Separation of duties.** `auditor` is read-only, including audit export, and cannot change configuration. `org_admin` cannot export the audit trail, which keeps the administrator separate from the evidence. `billing_admin` cannot read content.
 - **`ci_publisher`** is for service accounts only. `deployment.promote.prod` additionally requires the environment's `requireApproval` approver when that is configured.
 - **`tracker_app`** is for service accounts only: the identity of a tracker app's installation, today the Jira Forge app. Each installation gets the account `forge:<installation id>`, created on its first verified call (T04) with an org-scope binding, which is audited as `role.granted`. Its permissions are what the app's resolvers call: page search (`page.read`), ticket docs and readiness (`readiness.read`), links (`link.manage`) and doc tasks (`readiness.doc_tasks`). The credential's scopes are capped the same way (`docs:read`, `readiness:read`, `links:write`), so it can't publish, promote or change settings. The app applies the Jira user's own permissions before it calls (T33). Later calls don't re-grant the role, so an administrator can narrow the binding to spaces or remove it.
@@ -227,7 +227,7 @@ hash_n     = SHA-256( prev_hash_n || JCS(event_n without {prevHash, hash}) )
 
 ### 4.4 Export and SIEM mapping (OCSF 1.9.0)
 
-| DocOps field | OCSF API Activity (`class_uid` 6003, category 6 *Application Activity*) |
+| EADMan field | OCSF API Activity (`class_uid` 6003, category 6 *Application Activity*) |
 |---|---|
 | `action` | `api.operation`; `activity_id` 1 Create, 2 Read, 3 Update, 4 Delete, 99 Other; `type_uid = 600300 + activity_id` |
 | `occurredAt` | `time` |
@@ -237,7 +237,7 @@ hash_n     = SHA-256( prev_hash_n || JCS(event_n without {prevHash, hash}) )
 | `outcome` | `status_id` (1 Success, 2 Failure), plus `status` |
 | `requestId` | `api.request.uid` |
 | `hash`, `seq` | `unmapped.docops.hash`, `unmapped.docops.seq` |
-| Product | `metadata.product.name = "DocOps"`, `metadata.version = "1.9.0"` |
+| Product | `metadata.product.name = "EADMan"`, `metadata.version = "1.9.0"` |
 
 Export targets: S3 with Object Lock (compliance mode), Splunk HEC, Datadog, Microsoft Sentinel and syslog (RFC 5424 over TLS). Default retention is 1 year, configurable up to 7 years.
 
@@ -265,16 +265,16 @@ Export targets: S3 with Object Lock (compliance mode), Splunk HEC, Datadog, Micr
 - **Automation in CI.** CodeQL/Semgrep SAST, dependency and license scanning (OSV, SBOM diff), secret scanning, IaC scanning (Checkov) and DAST against preview environments. Container images are minimal (distroless) and signed.
 - **Tests as controls.** RLS isolation, webhook signatures, audit-chain integrity, RBAC doc-to-code parity, SSRF guards and AI leakage canaries all run on every PR. They are listed in the "Verified by" column above.
 - **Vulnerability management.** CVSS-based SLAs: critical 72 h, high 14 d, medium 60 d. Public disclosure program and bug bounty. Annual third-party pen test, plus one before each major release.
-- **Incident response.** 24×7 on-call. Customer notification for security incidents within 72 h, or faster where contracts require. Postmortems use DocOps' own template.
+- **Incident response.** 24×7 on-call. Customer notification for security incidents within 72 h, or faster where contracts require. Postmortems use EADMan' own template.
 
 ## 8. Compliance mapping
 
-| Framework | Control | DocOps implementation |
+| Framework | Control | EADMan implementation |
 |---|---|---|
 | **SOC 2** (TSC 2017) | CC6.1 logical access | SSO, SCIM, RBAC (§3), RLS, least-privilege tokens |
 | | CC6.6 / CC6.7 boundary protection, transmission | WAF, TLS 1.3, mTLS, egress controls |
 | | CC7.2 monitoring | OTel, SLO alerts, audit to SIEM |
-| | CC8.1 change management | Our own SDLC; **and** DocOps produces CC8.1 evidence for customers (traceability report) |
+| | CC8.1 change management | Our own SDLC; **and** EADMan produces CC8.1 evidence for customers (traceability report) |
 | **ISO/IEC 27001:2022** | A.5.15 / A.8.3 access control | §3, §5 |
 | | A.5.23 cloud services | Vendor (LLM, cloud) assessments, DPA |
 | | A.8.15 logging, A.8.16 monitoring | §4, architecture §11 |

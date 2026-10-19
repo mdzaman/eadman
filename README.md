@@ -1,8 +1,8 @@
-# DocOps
+# EADMan: Enterprise Application Document Management
 
 **Docs never drift from the code. Every release ships with accurate, traceable documentation.**
 
-DocOps is a docs-as-code platform. It links every doc page to the things it describes (API operations, config keys, infrastructure), to the tickets that required it, and to the releases that shipped it, and it checks those links on every pull request. This repository holds the complete design package and a working MVP scaffold.
+EADMan (Enterprise Application Document Management) is a docs-as-code platform. It links every doc page to the things it describes (API operations, config keys, infrastructure), to the tickets that required it, and to the releases that shipped it, and it checks those links on every pull request. This repository holds the complete design package and a working MVP scaffold.
 
 Start with the [Executive Summary](docs/00-executive-summary.md).
 
@@ -53,7 +53,7 @@ More commands (local API and worker, build, publish, preview) are in [docs/10-mv
 ```mermaid
 flowchart LR
   pr["Pull request"] --> cli["docops CLI / GitHub Action<br/>extract · diff · drift · gates"]
-  cli -- "findings, snapshot, build" --> api["DocOps API"]
+  cli -- "findings, snapshot, build" --> api["EADMan API"]
   api --> db[("Content graph<br/>Postgres + RLS")]
   api --> w["Worker"]
   w -- "docs status, links" --> jira["Jira"]
@@ -67,3 +67,7 @@ flowchart LR
 - **Deterministic first.** AI suggests; humans approve. Nothing is published silently.
 - **Runs anywhere.** Customer CI, SaaS cells, self-hosted or air-gapped.
 - **Open standards.** Markdown/MDX, OpenAPI, Mermaid, CloudEvents, OpenTelemetry, SARIF, OCSF. Full export.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

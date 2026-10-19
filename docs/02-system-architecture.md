@@ -5,7 +5,7 @@ reviewed: 2026-10-18
 status: proposed
 ---
 
-# DocOps: System Architecture
+# EADMan: System Architecture
 
 This document covers the component and deployment architecture, the content pipeline, the three critical sequence flows, storage, eventing, tenancy, encryption, extensibility, observability and SLOs. Decisions with real trade-offs are listed with their options and a recommendation, and each is recorded as an ADR in [`docs/adr/`](adr/README.md).
 
@@ -37,7 +37,7 @@ flowchart LR
     idp["Identity provider<br/>Okta · Entra ID · Google"]
   end
 
-  docops{{"DocOps platform"}}
+  docops{{"EADMan platform"}}
 
   subgraph ext["External services"]
     llm["LLM providers<br/>Claude · Azure OpenAI · self-hosted vLLM"]
@@ -237,7 +237,7 @@ sequenceDiagram
   actor Dana as Dana (developer)
   participant GH as GitHub
   participant CI as CI runner<br/>(docops action)
-  participant API as DocOps API
+  participant API as EADMan API
   participant W as Workers
   participant AI as AI service
   participant CDN as Object storage + CDN
@@ -249,7 +249,7 @@ sequenceDiagram
   API-->>W: link.extract job
   W->>J: Issue property docops.docs = in_review, Docs status field
   GH->>CI: Run workflow on pull_request
-  CI->>API: Exchange GitHub OIDC token for DocOps token (repo + ref scoped)
+  CI->>API: Exchange GitHub OIDC token for EADMan token (repo + ref scoped)
   CI->>CI: docops check --base origin/main (extract, diff entities, impact, gates)
   CI->>API: POST /v1/check-runs (findings, coverage, entity snapshot)
   API-->>W: ai.drift.suggest job (tenant opted in)
@@ -274,7 +274,7 @@ sequenceDiagram
 ```
 
 Design notes:
-- **Fail-open by default.** If DocOps is unreachable, the CLI runs every deterministic gate locally (`--offline` semantics), reports them, and marks platform-dependent steps as skipped. `ci.failOnPlatformError: true` makes it fail closed.
+- **Fail-open by default.** If EADMan is unreachable, the CLI runs every deterministic gate locally (`--offline` semantics), reports them, and marks platform-dependent steps as skipped. `ci.failOnPlatformError: true` makes it fail closed.
 - **Sticky comments** are found by a hidden marker (`<!-- docops:comment:v1 -->`) and updated in place. Re-runs never spam the PR.
 - **Coalescing.** A new push to the same PR cancels the in-flight hosted jobs for that PR (latest-wins key `(repo, pr)`).
 
@@ -286,7 +286,7 @@ sequenceDiagram
   actor Rita as Rita (release manager)
   participant JUI as Jira UI<br/>(Forge project page)
   participant FR as Forge function
-  participant API as DocOps API<br/>(Forge Remote)
+  participant API as EADMan API<br/>(Forge Remote)
   participant G as Content graph
   participant JR as Jira REST
 
@@ -571,7 +571,7 @@ export interface Rule {
 | LLM provider outage | LLM gateway health checks | Fall back to the secondary provider if the tenant allows it; otherwise AI features show "unavailable". Deterministic gates are unaffected |
 | Postgres primary failure | Patroni / RDS failover | API returns 503 for 30–60 s. Portal unaffected. CI gates fail open with a warning by default |
 | Queue backlog | `queue_lag_seconds` SLO burn | Autoscale workers (KEDA); shed `reindex`; coalesce builds; prod publish lane is reserved |
-| Bad deploy of DocOps | Canary SLO burn | Automatic rollback per cell |
+| Bad deploy of EADMan | Canary SLO burn | Automatic rollback per cell |
 | CDN outage | Synthetic probes | Multi-CDN DNS failover (Enterprise tier) |
 
 ## 14. Open architecture questions

@@ -5,7 +5,7 @@ reviewed: 2026-10-18
 status: proposed
 ---
 
-# DocOps: Executive Summary
+# EADMan: Executive Summary
 
 > **Promise:** Docs never drift from the code. Every release ships with accurate, traceable documentation.
 
@@ -24,7 +24,7 @@ Today's tools each solve one part of this:
 
 ## The solution
 
-DocOps is a docs-as-code platform built around a **content graph**: a versioned model that links every doc page to the things it describes (API operations, config keys, CLI flags, infrastructure resources), the tickets that required it, the commits and pull requests that changed it, and the releases that shipped it. That graph makes documentation **verifiable**:
+EADMan (Enterprise Application Document Management) is a docs-as-code platform built around a **content graph**: a versioned model that links every doc page to the things it describes (API operations, config keys, CLI flags, infrastructure resources), the tickets that required it, the commits and pull requests that changed it, and the releases that shipped it. That graph makes documentation **verifiable**:
 
 1. **Connect** a repo. The `docops` CLI and extractors turn OpenAPI, AsyncAPI, GraphQL, protobuf, source code and IaC into *entities* with stable keys and fingerprints.
 2. **Check every PR.** Deterministic gates catch broken links, undocumented new APIs, schema changes that arrive without doc updates, references to renamed or removed entities, failing code samples, style problems and accessibility issues. AI adds semantic drift findings, each with a quoted, cited patch suggestion that a human applies with one click.
@@ -33,7 +33,7 @@ DocOps is a docs-as-code platform built around a **content graph**: a versioned 
 5. **Prove it.** Jira shows the docs status of every ticket. A release-readiness view and a workflow validator block "Done" until the required docs are merged. An exportable traceability report links requirement → ticket → commit → PR → doc page → release.
 6. **Answer questions.** Ask-the-docs answers only from content the asker is allowed to see, cites the exact page and version, and says "not documented" instead of guessing.
 
-## Why DocOps wins
+## Why EADMan wins
 
 - **Entity-level drift detection.** Other tools work at the page level or the snippet level. A deterministic engine finds drift first. AI is added only where determinism can't reach, and its findings are advisory unless a team opts in to blocking on them.
 - **Release-readiness evidence wired into Jira.** Coverage, readiness and traceability are measured continuously, so nobody has to self-report them.

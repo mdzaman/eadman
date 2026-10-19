@@ -10,7 +10,7 @@ owners: ["@docops/integrations"]
 
 ## Context
 
-DocOps needs four things inside Jira: an issue panel, a read-only JQL-searchable field, a release-readiness page and a workflow validator. As verified in October 2026:
+EADMan needs four things inside Jira: an issue panel, a read-only JQL-searchable field, a release-readiness page and a workflow validator. As verified in October 2026:
 
 - **Atlassian Connect is ending.** New Connect apps have not been accepted on the Marketplace since 2025-09-17. Apps with a Connect descriptor lost the ability to ship updates in March 2026. End of support is **2027-01-31**.
 - **Forge** supports everything we need: `jira:issuePanel`, `jira:issueContext`, `jira:projectPage`, `jira:adminPage`, `jira:issueAction`, `jira:customField` (read-only, app-written values), `jira:workflowValidator` (expression- or function-based), product-event triggers, and **Forge Remote** to call our backend with a signed Forge Invocation Token (FIT). The runtime is `nodejs24.x`, and Forge supports data-residency pinning with region-specific remote base URLs.
@@ -18,8 +18,8 @@ DocOps needs four things inside Jira: an issue panel, a read-only JQL-searchable
 
 ## Decision
 
-1. **Jira Cloud:** a Forge app (UI Kit, `render: native`) with Forge Remote to the DocOps API. The function and remote handlers run on `nodejs24.x`. Remotes have per-region base URLs, so cell residency matches the tenant's.
-2. **System of record in Jira:** docs status and links are written to Jira as an issue entity property (`docops.docs`), remote issue links (upserted by `globalId`) and the read-only custom field *Docs status*. Jira users see the truth even if DocOps is unavailable.
+1. **Jira Cloud:** a Forge app (UI Kit, `render: native`) with Forge Remote to the EADMan API. The function and remote handlers run on `nodejs24.x`. Remotes have per-region base URLs, so cell residency matches the tenant's.
+2. **System of record in Jira:** docs status and links are written to Jira as an issue entity property (`docops.docs`), remote issue links (upserted by `globalId`) and the read-only custom field *Docs status*. Jira users see the truth even if EADMan is unavailable.
 3. **Jira Data Center:** a REST-only integration. Webhooks are verified with the `X-Hub-Signature` HMAC, and links and status go to issue properties and remote links. Enforcement runs through the customer's own workflow validator (ScriptRunner snippet provided) or Automation for Jira. We do **not** build a P2 plugin, given the 2029 end of life.
 4. **No Connect** modules anywhere, because a Forge manifest with Connect modules still counts as a Connect app.
 

@@ -5,7 +5,7 @@ reviewed: 2026-10-18
 status: proposed
 ---
 
-# DocOps: MVP, V1 and V2 Roadmap
+# EADMan: MVP, V1 and V2 Roadmap
 
 ## 1. Phasing principles
 
@@ -104,7 +104,7 @@ status: proposed
 
 ```mermaid
 gantt
-  title DocOps delivery plan
+  title EADMan delivery plan
   dateFormat YYYY-MM-DD
   axisFormat %b %Y
   section MVP

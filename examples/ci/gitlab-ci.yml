@@ -1,4 +1,4 @@
-# .gitlab-ci.yml: DocOps on GitLab CI/CD.
+# .gitlab-ci.yml: EADMan on GitLab CI/CD.
 # Merge requests: gates in the Code Quality widget and JUnit tab, plus a review-app preview.
 # Default branch: publish to dev. Release tags: publish to prod.
 stages: [check, preview, publish]
@@ -10,7 +10,7 @@ variables:
 .docops:
   image: node:24-alpine
   id_tokens:
-    DOCOPS_ID_TOKEN:                   # GitLab OIDC token, exchanged for a 15-minute DocOps token
+    DOCOPS_ID_TOKEN:                   # GitLab OIDC token, exchanged for a 15-minute EADMan token
       aud: https://api.docops.example
   before_script:
     - apk add --no-cache git

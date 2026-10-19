@@ -29,7 +29,7 @@ modules:
       resource: admin
       resolver: { function: resolver }
       render: native
-      title: DocOps
+      title: EADMan
       useAsConfig: true
   jira:issueAction:
     - key: docops-link-doc
@@ -40,12 +40,12 @@ modules:
   jira:customField:
     - key: docs-status
       name: Docs status
-      description: Documentation status computed by DocOps (read-only).
+      description: Documentation status computed by EADMan (read-only).
       type: string
       readOnly: true
   jira:workflowValidator:
     - key: docs-merged-validator
-      name: Docs merged (DocOps)
+      name: Docs merged (EADMan)
       description: Blocks the transition when docs are required but not merged or published.
       expression: >-
         issue.properties['docops.docs'] == null

@@ -1,4 +1,4 @@
-# DocOps server image: one image, two roles.
+# EADMan server image: one image, two roles.
 #
 #   docker build -f deploy/docker/Dockerfile -t docops/server:local .     (build context = repository root)
 #   docker run -p 8787:8787 docops/server:local                           the API (default CMD)
@@ -42,8 +42,9 @@ COPY api ./api
 FROM ${NODE_IMAGE} AS runtime
 ARG VERSION=0.1.0
 ARG REVISION=unknown
-LABEL org.opencontainers.image.title="DocOps server" \
-      org.opencontainers.image.description="DocOps API and worker (docs-as-code platform)" \
+LABEL org.opencontainers.image.title="EADMan server" \
+      org.opencontainers.image.description="EADMan API and worker (docs-as-code platform)" \
+      org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}"
 

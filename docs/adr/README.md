@@ -6,7 +6,7 @@ reviewed: 2026-10-18
 
 # Architecture Decision Records
 
-These ADRs use the template that DocOps ships (`docops new adr`): context, decision, options considered, consequences. ADRs are immutable once accepted. To change a decision, write a new ADR that supersedes the old one.
+These ADRs use the template that EADMan ships (`docops new adr`): context, decision, options considered, consequences. ADRs are immutable once accepted. To change a decision, write a new ADR that supersedes the old one.
 
 | ADR | Title | Status |
 |---|---|---|

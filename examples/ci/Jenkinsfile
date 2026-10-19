@@ -1,4 +1,4 @@
-// Jenkinsfile: DocOps in a declarative multibranch pipeline.
+// Jenkinsfile: EADMan in a declarative multibranch pipeline.
 // Requires: Docker Pipeline, Warnings Next Generation (SARIF parser), JUnit.
 pipeline {
   agent { docker { image 'node:24' } }
@@ -16,7 +16,7 @@ pipeline {
   }
 
   stages {
-    stage('Install DocOps CLI') {
+    stage('Install EADMan CLI') {
       steps { sh 'npm install --global @docops/cli@1' }
     }
 
@@ -34,7 +34,7 @@ pipeline {
       }
       post {
         always {
-          recordIssues(tools: [sarif(pattern: 'docops.sarif', id: 'docops', name: 'DocOps')])
+          recordIssues(tools: [sarif(pattern: 'docops.sarif', id: 'docops', name: 'EADMan')])
           junit(allowEmptyResults: true, testResults: 'docops-junit.xml')
         }
       }

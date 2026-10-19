@@ -1,9 +1,10 @@
 {
   "name": "@docops/jira-forge",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
-  "description": "DocOps for Jira Cloud: a Forge app (UI Kit + Forge Remote). Deliberately NOT part of the root npm workspaces: it is installed and deployed with the Forge CLI.",
+  "description": "EADMan for Jira Cloud: a Forge app (UI Kit + Forge Remote). Deliberately NOT part of the root npm workspaces: it is installed and deployed with the Forge CLI.",
   "engines": {
     "node": ">=22.12"
   },
